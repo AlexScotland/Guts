@@ -19,6 +19,8 @@ app/_repro_dir/
 **/*.dump
 **/*.rdb
 searxng/valkey-data/dump.rdb
+# Local SearXNG secret (template: searxng/.env.example)
+searxng/.env
 # package manager caches + deps
 .npm-cache/
 node_modules/

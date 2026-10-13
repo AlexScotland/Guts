@@ -4,8 +4,9 @@
 use_default_settings: true
 
 server:
-  # SearXNG cookie-signing key — REQUIRED. Generate your own, e.g. `openssl rand -hex 32`.
-  secret_key: "CHANGE_ME_openssl_rand_hex_32"
+  # Rendered from the container environment — SEARXNG_SECRET is set in
+  # searxng/.env (gitignored; see .env.example) via the compose env_file.
+  secret_key: "{{ SEARXNG_SECRET or 'insecure-dev-fallback-change-me' }}"
   image_proxy: true
   limiter: false
 
