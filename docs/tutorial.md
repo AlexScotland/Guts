@@ -30,6 +30,16 @@ are exactly that mode.
 
 ## 1. Boot the stack
 
+First time only, the SearXNG instance needs a local secret key (the template
+is committed as `searxng/.env.example`; the real `.env` is gitignored):
+
+```bash
+cp searxng/.env.example searxng/.env
+echo "SEARXNG_SECRET=$(openssl rand -hex 32)" >> searxng/.env
+```
+
+Then:
+
 ```bash
 docker compose up --build
 ```

@@ -100,6 +100,16 @@ python3 -c "from schemas.graph import parse_graph; print(parse_graph('graphs/sam
 
 ### Docker (everything together)
 
+One-time setup — the SearXNG instance needs a local secret key (the template
+is committed as `searxng/.env.example`; the real `.env` is gitignored):
+
+```bash
+cp searxng/.env.example searxng/.env
+echo "SEARXNG_SECRET=$(openssl rand -hex 32)" >> searxng/.env
+```
+
+Then bring the whole stack up:
+
 ```bash
 docker compose up --build
 ```
@@ -153,10 +163,14 @@ curl -s localhost:8000/api/graphs/sample-critique/last-run | python3 -m json.too
 ### Run the tests
 
 Fake-driven only — real-LLM runs are smoke tests, never assertions
-(`app/tests/`, 123 tests):
+(`app/tests/`, 123 tests). Third-party deps resolve from a **local,
+gitignored** `app/.pydeps/` (the Docker image installs the same
+`requirements.txt`):
 
 ```bash
-cd app && PYTHONPATH=.pydeps python3 -m pytest tests/ -q
+cd app
+pip install --target .pydeps -r requirements.txt   # one-time, then:
+PYTHONPATH=.pydeps python3 -m pytest tests/ -q
 ```
 
 A real-LLM end-to-end smoke run (prints the answer + every node event)
@@ -199,7 +213,7 @@ docs/         the tutorial + the design docs; the graph contract and its
                hot-swap-components.md  (slots/aliases/presets)
 ```
 
-## Design principles (the parts we'd want reviewed)
+## Design principles
 
 - **Small closed vocabulary + open topology.** Freedom comes from how you
   connect, not from node count; adding a primitive is a separate, deliberate
