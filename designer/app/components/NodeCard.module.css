@@ -1,0 +1,310 @@
+.node {
+  position: absolute;
+  min-height: 96px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-soft);
+  user-select: none;
+}
+
+.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent),
+    var(--shadow-soft);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 8px 0 12px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.head:active {
+  cursor: grabbing;
+}
+
+.primitive {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.id {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
+}
+
+.remove {
+  margin-left: auto;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  flex: none;
+}
+
+.remove:hover {
+  background: var(--error-soft);
+  color: var(--error);
+}
+
+.body {
+  position: relative;
+  padding: 0 0 12px;
+}
+
+.row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+}
+
+.cellL,
+.cellR {
+  flex: 1;
+  position: relative;
+}
+
+.port {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.portIn {
+  left: 0;
+  padding-left: 2px;
+}
+
+.portOut {
+  right: 0;
+  padding-right: 2px;
+  flex-direction: row-reverse;
+}
+
+.portCtl {
+  right: 0;
+  padding-right: 2px;
+  flex-direction: row-reverse;
+  color: var(--accent);
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  border: 2px solid var(--accent);
+  flex: none;
+  cursor: crosshair;
+  transition: transform 120ms var(--ease);
+}
+
+.portIn .dot {
+  margin-left: 2px;
+}
+
+.portOut .dot,
+.portCtl .dot {
+  margin-right: 2px;
+}
+
+.dotCtl {
+  background: transparent;
+  border-style: dashed;
+}
+
+.dot:hover {
+  transform: scale(1.35);
+}
+
+.dropTarget .dot {
+  background: var(--accent);
+}
+
+.foot {
+  position: absolute;
+  bottom: 6px;
+  left: 10px;
+  right: 10px;
+  font-size: 10px;
+  color: var(--warn);
+}
+
+/* A skipped node carries its reason (v1 routing: "not routed" /
+ * "upstream pruned") — same bottom slot as .foot, muted to match the
+ * dashed pruned border. */
+.skipFoot {
+  position: absolute;
+  bottom: 6px;
+  left: 10px;
+  right: 10px;
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+/* ── run states (the canvas seam: the node in flight, then the outcome) ── */
+
+.running {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent),
+    var(--shadow-soft);
+  animation: nodePulse 1.3s ease-in-out infinite;
+}
+
+@keyframes nodePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent),
+      var(--shadow-soft);
+  }
+  50% {
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 14%, transparent),
+      var(--shadow-soft);
+  }
+}
+
+.ok {
+  border-color: color-mix(in srgb, var(--ok) 65%, var(--border));
+}
+
+.failed {
+  border-color: var(--error);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--error) 28%, transparent),
+    var(--shadow-soft);
+}
+
+.skipped {
+  border-style: dashed;
+  border-color: var(--text-faint);
+  opacity: 0.82;
+}
+
+.stateDot {
+  width: 10px;
+  height: 10px;
+  margin-left: 6px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  border-top-color: transparent;
+  flex: none;
+  animation: stateSpin 0.9s linear infinite;
+}
+
+@keyframes stateSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── node inspector popover (portaled to <body>, escapes the transform) ── */
+
+.pop {
+  position: fixed;
+  z-index: 100;
+  width: min(440px, 92vw);
+  max-height: min(78vh, 620px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.28);
+}
+
+.popHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.popTitle {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.popBranch {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--warn);
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.popPrimitive {
+  flex: none;
+  font-size: 10px;
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.popClose {
+  flex: none;
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.popClose:hover {
+  background: var(--error-soft);
+  color: var(--error);
+}
+
+.popBody {
+  padding: 10px 12px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .running {
+    animation: none;
+  }
+  .stateDot {
+    animation: none;
+    border-top-color: var(--accent);
+  }
+}

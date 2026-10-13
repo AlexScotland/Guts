@@ -1,0 +1,91 @@
+{
+  "name": "sample/fanout — parallel branches, merge, retry, sign-off gate",
+  "description": "The full vocabulary in one graph: a 'parallel' node runs two INLINE branch graphs concurrently (fresh blackboard per branch; only 'research' gathers — side-effect 'act' nodes are rejected inside branches so conversation commits stay serial); 'merge' commits the branch outputs to the conversation in DECLARED edge order; 'act' composes the answer with on_failure='retry(2)'; 'critic' judges; 'gate' projects the verdict onto a boolean 'pass' with no LLM call. max_parallel caps the concurrent branches; every budget layer (graph, branch, node) is shown.",
+  "version": "1.0",
+  "budget": 160,
+  "max_parallel": 2,
+  "nodes": {
+    "fanout": {
+      "primitive": "parallel",
+      "config": {},
+      "branches": [
+        {
+          "name": "web",
+          "budget": 40,
+          "graph": {
+            "nodes": {
+              "web_research": {
+                "primitive": "research",
+                "config": {
+                  "task": "Read-only research: search the web for up-to-date, authoritative context on the goal. Do NOT modify any files or memory."
+                },
+                "budget": 35
+              }
+            },
+            "edges": []
+          }
+        },
+        {
+          "name": "kb",
+          "budget": 40,
+          "graph": {
+            "nodes": {
+              "kb_research": {
+                "primitive": "research",
+                "config": {
+                  "task": "Read-only research: read the local knowledge base (memory/, docs/, PDFs) for context on the goal. Do NOT modify any files or memory."
+                },
+                "budget": 35
+              }
+            },
+            "edges": []
+          }
+        }
+      ]
+    },
+    "join": {
+      "primitive": "merge",
+      "config": {
+        "labeled": true
+      }
+    },
+    "compose": {
+      "primitive": "act",
+      "config": {
+        "task": "Synthesize the merged research into one coherent final answer; cite the strongest sources inline."
+      },
+      "budget": 45,
+      "on_failure": "retry(2)"
+    },
+    "judge": {
+      "primitive": "critic",
+      "config": {}
+    },
+    "signoff": {
+      "primitive": "gate",
+      "config": {}
+    }
+  },
+  "edges": [
+    {
+      "from": "fanout",
+      "to": "join",
+      "type": "data"
+    },
+    {
+      "from": "join",
+      "to": "compose",
+      "type": "data"
+    },
+    {
+      "from": "compose",
+      "to": "judge",
+      "type": "data"
+    },
+    {
+      "from": "judge",
+      "to": "signoff",
+      "type": "data"
+    }
+  ]
+}

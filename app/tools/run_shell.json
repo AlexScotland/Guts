@@ -1,0 +1,38 @@
+{
+  "type": "function",
+  "function": {
+    "name": "run_shell",
+    "description": "Execute a Linux shell command (bash/sh) in an isolated child process and report the real result (stdout, stderr, exit code, timing). Isolation: separate process, no shared state with the harness; kernel rlimits (2 GB memory, 64 MB max file size, 512 processes, 256 open files, CPU bounded by timeout); wall-clock timeout (default 10 s) kills the whole process group on exceed. Returns a === RUN RESULT === block with status OK / FAIL, duration_ms, stdout, stderr, and exit code.",
+    "parameters": {
+      "type": "object",
+      "required": [
+        "command"
+      ],
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "The shell command to execute (e.g., \"ls -la /tmp\", \"grep -r pattern .\")."
+        },
+        "working_directory": {
+          "type": "string",
+          "description": "Absolute path to the directory in which to run the command (default: workspace dir)."
+        },
+        "timeout": {
+          "type": "integer",
+          "description": "Wall-clock seconds before the whole process group is killed (default: 10)."
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Optional environment variables to set for the command (key-value pairs)."
+        },
+        "stdin": {
+          "type": "string",
+          "description": "Optional text to feed into the command's standard input."
+        }
+      }
+    }
+  }
+}

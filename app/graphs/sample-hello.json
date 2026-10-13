@@ -1,0 +1,27 @@
+{
+  "name": "sample/hello — the smallest possible graph",
+  "description": "Minimal graph document: one prompt node injects framing, one act node answers through the active executor. One data edge, no branches, no retries. Every other sample adds one more contract feature on top of this exact shape.",
+  "version": "1.0",
+  "budget": 15,
+  "nodes": {
+    "frame": {
+      "primitive": "prompt",
+      "config": {
+        "text": "You are a sharp, concise assistant. Answer in a single short paragraph, no preamble."
+      }
+    },
+    "answer": {
+      "primitive": "act",
+      "config": {
+        "task": "Answer the goal in one short paragraph, using the context injected above."
+      }
+    }
+  },
+  "edges": [
+    {
+      "from": "frame",
+      "to": "answer",
+      "type": "data"
+    }
+  ]
+}

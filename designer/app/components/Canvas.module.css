@@ -1,0 +1,184 @@
+.viewport {
+  position: relative;
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+  background:
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--text-faint) 26%, transparent) 1px, transparent 1.6px);
+  background-size: 22px 22px;
+  background-color: var(--bg);
+  touch-action: none;
+}
+
+.content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+}
+
+.wires {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+}
+
+.hit {
+  stroke: transparent;
+  stroke-width: 14;
+  fill: none;
+  cursor: pointer;
+  pointer-events: stroke;
+}
+
+.wire {
+  stroke: var(--accent);
+  stroke-width: 2;
+  opacity: 0.75;
+}
+
+.wireCtl {
+  stroke: var(--warn);
+  stroke-dasharray: 7 5;
+  opacity: 0.9;
+}
+
+/* A route node's outgoing data edges = its choice set (v1,
+ * docs/ai-routing-nodes.md): dashed fan in the "ok" hue, distinct from
+ * plain data wires (solid accent) and control wires (dashed warn). */
+.wireChoice {
+  stroke: var(--ok);
+  stroke-dasharray: 7 5;
+  opacity: 0.9;
+}
+
+.wireSel {
+  opacity: 1;
+  stroke-width: 3;
+}
+
+.wireBad {
+  stroke: var(--error);
+  stroke-dasharray: 4 4;
+}
+
+/* The wire feeding the node that is executing right now: thicker, full
+ * opacity, and marching (dashes flow toward the node). */
+.wireActive {
+  stroke: var(--accent);
+  stroke-width: 3;
+  opacity: 1;
+  stroke-dasharray: 7 5;
+  animation: wireFlow 0.7s linear infinite;
+}
+
+@keyframes wireFlow {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wireActive {
+    animation: none;
+  }
+}
+
+.wireLabel {
+  font-family: var(--mono);
+  font-size: 11px;
+  fill: var(--warn);
+}
+
+.ghost {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+  opacity: 0.8;
+}
+
+.empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 6px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13.5px;
+  pointer-events: none;
+}
+
+.empty code {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+.emptyHint {
+  font-size: 12px;
+  color: var(--text-faint);
+  max-width: 460px;
+}
+
+.zoomer {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  backdrop-filter: blur(6px);
+}
+
+.zoomer button {
+  min-width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.zoomer button:hover {
+  background: var(--surface-hover);
+}
+
+.zoomer .reset {
+  font-size: 11px;
+  font-family: var(--mono);
+}
+
+.zoomPct {
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--text-muted);
+  min-width: 38px;
+  text-align: center;
+}
+
+.offline {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  font-size: 11px;
+  color: var(--warn);
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 5px 9px;
+  pointer-events: none;
+}

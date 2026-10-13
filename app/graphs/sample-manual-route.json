@@ -1,0 +1,45 @@
+{
+  "name": "sample/manual-route — the same supervisor, fully deterministic",
+  "description": "A route node with the 'manual' decider: config.pinned names the branch that ALWAYS runs, zero LLM calls on the hop (a node budget of 0 is offline mode by construction). Same choice-set wiring rules as the llm decider — options keys must equal the downstream ids, 'fallback' must be in the set. Use it to pin a graph for debugging, testing, or to exercise one branch of a larger design graph without burning model budget. 'rule' is reserved (validator rejects it).",
+  "version": "1.0",
+  "budget": 60,
+  "nodes": {
+    "dispatch": {
+      "primitive": "route",
+      "config": {
+        "decider": "manual",
+        "pinned": "notes",
+        "fallback": "notes",
+        "options": {
+          "notes": "Turn the context into a polished written note or summary — the low-risk path.",
+          "blueprint": "Break the goal into a concrete, step-by-step implementation plan."
+        }
+      },
+      "budget": 0
+    },
+    "notes": {
+      "primitive": "act",
+      "config": {
+        "task": "Write a clear, self-contained note answering the goal, grounded in any context provided."
+      },
+      "budget": 25
+    },
+    "blueprint": {
+      "primitive": "plan",
+      "config": {},
+      "budget": 15
+    }
+  },
+  "edges": [
+    {
+      "from": "dispatch",
+      "to": "notes",
+      "type": "data"
+    },
+    {
+      "from": "dispatch",
+      "to": "blueprint",
+      "type": "data"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "name": "sample/pipeline — research → plan → act",
+  "description": "A linear three-stage pipeline: read-only research feeds an optional context into the planner, the plan drives the executor. Shows per-node budgets and on_failure='skip': if the research node dies, the graph continues and the planner falls back to the goal alone (its only REQUIRED input), so a flaky lookup degrades instead of aborting the turn.",
+  "version": "1.0",
+  "budget": 90,
+  "max_parallel": 1,
+  "nodes": {
+    "gather": {
+      "primitive": "research",
+      "config": {
+        "task": "Read-only research: gather the context needed to accomplish the goal (web or local knowledge). Do NOT modify any files, memory, or anything outside this task."
+      },
+      "budget": 30,
+      "on_failure": "skip"
+    },
+    "outline": {
+      "primitive": "plan",
+      "config": {},
+      "budget": 15
+    },
+    "ship": {
+      "primitive": "act",
+      "config": {
+        "task": "Execute the plan and deliver the final answer to the goal."
+      },
+      "budget": 45
+    }
+  },
+  "edges": [
+    {
+      "from": "gather",
+      "to": "outline",
+      "type": "data"
+    },
+    {
+      "from": "outline",
+      "to": "ship",
+      "type": "data"
+    }
+  ]
+}

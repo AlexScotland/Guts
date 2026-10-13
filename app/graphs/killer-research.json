@@ -1,0 +1,85 @@
+{
+  "name": "killer",
+  "version": "1.0",
+  "budget": 120,
+  "max_parallel": 2,
+  "nodes": {
+    "fanout": {
+      "primitive": "parallel",
+      "config": {},
+      "branches": [
+        {
+          "name": "web",
+          "budget": 60,
+          "graph": {
+            "nodes": {
+              "web_research": {
+                "primitive": "research",
+                "config": {
+                  "task": "Read-only research: search the web and gather authoritative, up-to-date context on the goal. Do NOT modify any files, memory, or anything outside this task."
+                },
+                "budget": 40
+              }
+            },
+            "edges": []
+          }
+        },
+        {
+          "name": "local",
+          "budget": 60,
+          "graph": {
+            "nodes": {
+              "local_research": {
+                "primitive": "research",
+                "config": {
+                  "task": "Read-only research: read the local knowledge base (memory/, docs/, PDFs) and gather context on the goal. Do NOT modify any files or memory."
+                },
+                "budget": 40
+              }
+            },
+            "edges": []
+          }
+        }
+      ]
+    },
+    "join": {
+      "primitive": "merge",
+      "config": {
+        "labeled": true
+      }
+    },
+    "do": {
+      "primitive": "act",
+      "config": {
+        "task": "Answer the goal using the gathered context. Cite the strongest sources inline."
+      }
+    },
+    "judge": {
+      "primitive": "critic",
+      "config": {}
+    }
+  },
+  "edges": [
+    {
+      "from": "fanout",
+      "to": "join",
+      "type": "data"
+    },
+    {
+      "from": "join",
+      "to": "do",
+      "type": "data"
+    },
+    {
+      "from": "do",
+      "to": "judge",
+      "type": "data"
+    },
+    {
+      "from": "judge",
+      "to": "do",
+      "type": "control",
+      "max_passes": 2
+    }
+  ]
+}

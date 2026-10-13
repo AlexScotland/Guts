@@ -1,0 +1,10 @@
+# .dockerignore — harness backend (context: ./app/)
+# Local test-environment installs are not part of the image: the image
+# installs its own Python deps from requirements.txt.
+.pydeps
+.venv
+.venv-test
+# Python bytecode from local runs
+__pycache__
+**/__pycache__
+*.py[cod]

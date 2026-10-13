@@ -1,0 +1,43 @@
+{
+  "name": "sample/critique — draft, judge, repeat (control edge)",
+  "description": "The retry loop: 'act' drafts, 'critic' judges (active evaluator heuristic first, then one LLM-with-schema call), and a CONTROL edge feeds the verdict back to 'act'. Data edges must be acyclic — the only legal cycle is a declared control edge leaving a verdict node (critic/gate), and it MUST carry max_passes, so the loop terminates by construction. Here: at most 3 judge passes.",
+  "version": "1.0",
+  "budget": 120,
+  "nodes": {
+    "frame": {
+      "primitive": "prompt",
+      "config": {
+        "text": "You are a careful writer who takes critique seriously: address every gap the critic names, then stop."
+      }
+    },
+    "draft": {
+      "primitive": "act",
+      "config": {
+        "task": "Write a complete, well-structured answer to the goal. Expect one or two critique passes — revise the draft to close each named gap."
+      },
+      "budget": 35
+    },
+    "judge": {
+      "primitive": "critic",
+      "config": {}
+    }
+  },
+  "edges": [
+    {
+      "from": "frame",
+      "to": "draft",
+      "type": "data"
+    },
+    {
+      "from": "draft",
+      "to": "judge",
+      "type": "data"
+    },
+    {
+      "from": "judge",
+      "to": "draft",
+      "type": "control",
+      "max_passes": 3
+    }
+  ]
+}

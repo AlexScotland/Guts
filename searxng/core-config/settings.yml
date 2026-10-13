@@ -1,0 +1,38 @@
+# Read the documentation before extending the defaults:
+# https://docs.searxng.org/admin/settings/
+
+use_default_settings: true
+
+server:
+  # SearXNG cookie-signing key — REQUIRED. Generate your own, e.g. `openssl rand -hex 32`.
+  secret_key: "CHANGE_ME_openssl_rand_hex_32"
+  image_proxy: true
+  limiter: false
+
+search:
+  formats:
+    - html
+    - json
+  
+engines:
+  - name: google
+    engine: google
+    shortcut: g
+    timeout: 3.0
+    use_official_api: false
+    
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+    timeout: 2.0
+
+  - name: wikipedia
+    engine: wikipedia
+    shortcut: w
+    timeout: 2.0
+
+outgoing:
+  request_timeout: 5.0
+  max_request_timeout: 10.0
+  user_agent_mock: true # Automatically cycles realistic browser User-Agents
+

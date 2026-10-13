@@ -1,0 +1,30 @@
+{
+  "nodes": {
+    "act_4": {
+      "primitive": "act"
+    },
+    "research_3": {
+      "primitive": "research"
+    },
+    "prompt_3": {
+      "primitive": "prompt",
+      "config": {
+        "text": "Injected focus: be concrete and cite what you rely on."
+      }
+    }
+  },
+  "edges": [
+    {
+      "from": "research_3",
+      "to": "act_4",
+      "type": "data"
+    },
+    {
+      "from": "prompt_3",
+      "to": "research_3",
+      "type": "data"
+    }
+  ],
+  "name": "loop-095272",
+  "version": "1.0"
+}

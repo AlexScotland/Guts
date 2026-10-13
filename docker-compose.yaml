@@ -1,0 +1,90 @@
+  services:
+    app:
+      build:
+        context: ./app/
+        dockerfile: Dockerfile
+      command: python server.py
+      environment:
+        - SEARXNG_HOST=http://core:8080
+      volumes:
+        - "./app/:/app/"
+      ports:
+        - "8000:8000"
+      container_name: agent-app
+      depends_on:
+        - core
+      extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    frontend:
+      build:
+        context: ./chat-ui/
+        dockerfile: Dockerfile
+      ports:
+        - "3010:3000"
+      environment:
+        # The client uses relative URLs (no NEXT_PUBLIC_API_URL); the
+        # running Next server proxies /api/* and /health to the backend
+        # container. Must resolve FROM THIS container: compose service
+        # name `app`, not localhost.
+        - BACKEND_PROXY_TARGET=http://app:8000
+
+    designer:
+      # ── Dev-server mode ────────────────────────────────────────────────────
+      # Targets the `build` stage: it keeps the full node_modules + Next CLI.
+      # (The `runner` stage that the production image uses ships a pruned
+      # standalone node_modules without the CLI, so `next dev` cannot run
+      # there.)  The app source is volume-mounted for hot reload, and the
+      # command below overrides the image's production CMD.
+      #
+      # To go back to the production image: delete `target`, `environment`,
+      # `volumes` and `command` from this service, then
+      #   docker compose build designer && docker compose up -d designer
+      build:
+        context: ./designer/
+        dockerfile: Dockerfile
+        target: build
+      ports:
+        - "3020:3000"
+      environment:
+        # The client uses relative URLs (no NEXT_PUBLIC_API_URL): the
+        # `next dev` server proxies /api/* and /health to the backend
+        # container. BACKEND_PROXY_TARGET is read by the Next server, so
+        # it must resolve FROM THIS container: compose service name `app`,
+        # not localhost.
+        - BACKEND_PROXY_TARGET=http://app:8000
+        # Bind all interfaces so the dev server is reachable through the
+        # host port mapping.
+        - HOSTNAME=0.0.0.0
+      volumes:
+        # Live source tree — HMR picks up edits without a rebuild.
+        - ./designer/app:/app/app
+        # Fresh in-memory .next for the dev server.  Without this it would
+        # inherit the production build output baked into the `build` stage
+        # image, and the dev server does not clear that on its own.
+        - type: tmpfs
+          target: /app/.next
+      command: npm run dev
+
+    core:
+      container_name: searxng-core
+      image: docker.io/searxng/searxng:${SEARXNG_VERSION:-latest}
+      restart: always
+      ports:
+        - ${SEARXNG_HOST:+${SEARXNG_HOST}:}${SEARXNG_PORT:-8080}:${SEARXNG_PORT:-8080}
+      env_file: ./searxng/.env
+      volumes:
+        - ./searxng/core-config/:/etc/searxng/:Z
+        - ./searxng/core-data:/var/cache/searxng/
+
+    valkey:
+      container_name: searxng-valkey
+      image: docker.io/valkey/valkey:9-alpine
+      command: valkey-server --save 30 1 --loglevel warning
+      restart: always
+      volumes:
+        - ./searxng/valkey-data:/data/
+
+  volumes:
+    core-data:
+    valkey-data:

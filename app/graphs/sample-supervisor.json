@@ -1,0 +1,45 @@
+{
+  "name": "sample/supervisor — a route node dispatches to the right specialist",
+  "description": "The v1 'route' primitive (docs/ai-routing-nodes.md): the supervisor pattern. The node's OUTGOING DATA EDGES are its choice set — config.options keys must equal the downstream node ids EXACTLY (validated at save). The 'llm' decider makes one structured single-choice call (choice + mandatory reason; the decision costs 1 budget unit); if the choice is invalid the declared 'fallback' edge is taken — never a silent retry. Untaken branches are SKIPPED with the pinned 'not routed' reason, so the choice is visible in the event stream.",
+  "version": "1.0",
+  "budget": 100,
+  "nodes": {
+    "dispatch": {
+      "primitive": "route",
+      "config": {
+        "decider": "llm",
+        "options": {
+          "web-dig": "Gather up-to-date context: search the web and read the local knowledge base, then report findings.",
+          "code-run": "Do the work hands-on: write, run, and test the code the goal asks for, then report the result."
+        },
+        "fallback": "web-dig"
+      }
+    },
+    "web-dig": {
+      "primitive": "research",
+      "config": {
+        "task": "Read-only research: gather authoritative context on the goal from the web and the local knowledge base. Do NOT modify any files or memory."
+      },
+      "budget": 40
+    },
+    "code-run": {
+      "primitive": "act",
+      "config": {
+        "task": "Implement the goal: write the code, run it, test it, and report exactly what was done and what the output shows."
+      },
+      "budget": 50
+    }
+  },
+  "edges": [
+    {
+      "from": "dispatch",
+      "to": "web-dig",
+      "type": "data"
+    },
+    {
+      "from": "dispatch",
+      "to": "code-run",
+      "type": "data"
+    }
+  ]
+}

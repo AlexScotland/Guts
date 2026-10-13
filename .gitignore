@@ -1,0 +1,24 @@
+*.pyc
+**/*.pyc
+__pycache__/
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+app/memory/**/*.md
+app/memory/**/*.pdf
+# Python Workshop files
+app/python_workspace
+# Local test venv
+.venv-test/
+.venv/
+# Local pip --target dependency install (no system venv available in CI sandbox)
+.pydeps/
+# repro-fixture run output (app/_repro.py recreates it)
+app/_repro_dir/
+**/*.dump
+**/*.rdb
+searxng/valkey-data/dump.rdb
+# package manager caches + deps
+.npm-cache/
+node_modules/
