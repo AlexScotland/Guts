@@ -12,16 +12,21 @@ import TestPanel from "./components/TestPanel";
 import { useTheme } from "./hooks/useTheme";
 import {
   activate,
+  activateAgent,
   ApiError,
+  deleteAgent,
   deleteGraph,
   getComponents,
   getGraph,
+  getAgent,
   getAgents,
   getGraphs,
   getLastRun,
   isBackendOnline,
   postChat,
+  saveAgent,
   saveGraph,
+  testAgentMcp,
 } from "./lib/api";
 import {
   deriveNodeOutputs,
@@ -39,9 +44,17 @@ import {
   type CanvasNode,
   type PrimitiveMeta,
 } from "./lib/graph";
+import {
+  docToDraft,
+  draftToDoc,
+  isValidAgentId,
+  newAgentDraft,
+  newAgentId,
+  type AgentDraft,
+  type CanvasAgent,
+} from "./lib/agentNode";
 import type {
   AgentMeta,
-  AgentsStatus,
   BranchSpec,
   GraphMeta,
   LastRun,
@@ -108,6 +121,21 @@ export default function Page() {
   const [agents, setAgents] = useState<AgentMeta[] | null>(null);
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
 
+  // The canvas AGENT NODES (docs/agent-graph.md — "The agent node on the
+  // canvas"): each is a DRAFT of one agent document (a second document
+  // family — never serialized into the turn-graph doc). `agentBaselines`
+  // holds the last SAVED serialization per id (the dirty diff); a fresh
+  // draft's baseline is its own serialization, so it starts clean.
+  const [canvasAgents, setCanvasAgents] = useState<CanvasAgent[]>([]);
+  const [agentBaselines, setAgentBaselines] = useState<Record<string, string>>({});
+  /** The in-flight agent action per node ("saving…" / "testing web…" / …). */
+  const [agentBusy, setAgentBusy] = useState<{ id: string; label: string } | null>(null);
+
+  const clearAgentBusy = useCallback(
+    (id: string) => setAgentBusy((cur) => (cur && cur.id === id ? null : cur)),
+    []
+  );
+
   const [graph, setGraph] = useState<CanvasGraph>(() => seedGraph("my-loop"));
   const [baseline, setBaseline] = useState<string>(() =>
     JSON.stringify(toDoc(seedGraph("my-loop")))
@@ -145,6 +173,20 @@ export default function Page() {
   );
 
   const issues = useMemo(() => checkCanvas(graph, meta), [graph, meta]);
+
+  // Per-agent-node unsaved flag: the draft's CURRENT serialization vs the
+  // last saved one (the round-trip test pins that a saved doc loads back to
+  // the identical serialization, so the diff is honest).
+  const agentDirty = useMemo(() => {
+    const d: Record<string, boolean> = {};
+    for (const a of canvasAgents) {
+      d[a.id] = JSON.stringify(draftToDoc(a.draft)) !== (agentBaselines[a.id] ?? "");
+    }
+    return d;
+  }, [canvasAgents, agentBaselines]);
+
+  /** Saved turn-graph ids — the agent loop slot's `ref` options. */
+  const savedGraphIds = useMemo(() => (graphs ?? []).map((g) => g.id), [graphs]);
 
   const docJson = useMemo(() => JSON.stringify(toDoc(graph), null, 2), [graph]);
 
@@ -410,6 +452,207 @@ export default function Page() {
     []
   );
 
+  // ── the agent layer (docs/agent-graph.md — a SECOND document family) ─────
+  // The canvas agent nodes are DRAFTS of agent documents. Nothing here
+  // touches the turn-graph doc; Save/Activate/Delete/Test-MCP are the REST
+  // door, where app/schemas/agent.py stays the authority (400 = honest
+  // failure), and the fakes-only oracle on the backend stays untouched.
+
+  /** A fresh agent node on the canvas: a minimal VALID draft (the alias
+   *  loop, nothing invented), positioned right of the turn-graph column. */
+  const addAgentNode = useCallback(() => {
+    const existing = canvasAgents.map((a) => a.id);
+    const id = newAgentId(existing);
+    const draft = newAgentDraft();
+    const n = existing.length;
+    setCanvasAgents((a) => [
+      ...a,
+      { id, x: 640 + (n % 4) * 40, y: 80 + (n % 4) * 56, draft },
+    ]);
+    setAgentBaselines((b) => ({ ...b, [id]: JSON.stringify(draftToDoc(draft)) }));
+    setSelection({ kind: "agent", id });
+    notify(true, `Added agent node ${id} — edit, then Save hits the REST door.`);
+  }, [canvasAgents, notify]);
+
+  /** Open a SAVED agent as a canvas node (the library's "edit on canvas"):
+   *  the document loads through the door into a draft. A node with that id
+   *  already on the canvas is just (re)selected. */
+  const openAgentOnCanvas = useCallback(
+    async (id: string) => {
+      if (canvasAgents.some((a) => a.id === id)) {
+        setSelection({ kind: "agent", id });
+        return;
+      }
+      try {
+        const detail = await getAgent(id);
+        const draft = docToDraft(detail.agent);
+        const n = canvasAgents.length;
+        setCanvasAgents((a) => [
+          ...a,
+          { id, x: 640 + (n % 4) * 40, y: 80 + (n % 4) * 56, draft },
+        ]);
+        setAgentBaselines((b) => ({
+          ...b,
+          [id]: JSON.stringify(draftToDoc(draft)),
+        }));
+        setSelection({ kind: "agent", id });
+        notify(true, `Opened ${id} on the canvas (in sync with the saved document).`);
+      } catch (e) {
+        notify(false, e instanceof Error ? e.message : String(e));
+      }
+    },
+    [canvasAgents, notify]
+  );
+
+  const moveAgentNode = useCallback(
+    (id: string, x: number, y: number) =>
+      setCanvasAgents((a) => a.map((n) => (n.id === id ? { ...n, x, y } : n))),
+    []
+  );
+
+  const patchAgentDraft = useCallback(
+    (id: string, patch: Partial<AgentDraft>) =>
+      setCanvasAgents((a) =>
+        a.map((n) => (n.id === id ? { ...n, draft: { ...n.draft, ...patch } } : n))
+      ),
+    []
+  );
+
+  const removeAgentNode = useCallback((id: string) => {
+    setCanvasAgents((a) => a.filter((n) => n.id !== id));
+    setAgentBaselines((b) => {
+      const next = { ...b };
+      delete next[id];
+      return next;
+    });
+    setSelection((sel) => (sel?.kind === "agent" && sel.id === id ? null : sel));
+  }, []);
+
+  /** Rename the node's identity (the REST id its Save writes to). Returns an
+   *  error message, or null on commit (then the node, selection, and baseline
+   *  all move to the new id — a new saved agent is born, the old one untouched). */
+  const renameAgentNode = useCallback(
+    (oldId: string, nextId: string): string | null => {
+      if (!nextId) return "id can't be empty.";
+      if (nextId === oldId) return null;
+      if (!isValidAgentId(nextId)) {
+        return "id must be a [A-Za-z0-9_-] token (first char a letter or digit) — the store's rule.";
+      }
+      if (canvasAgents.some((a) => a.id === nextId)) {
+        return `a canvas agent "${nextId}" already exists — ids must be unique between nodes.`;
+      }
+      setCanvasAgents((a) => a.map((n) => (n.id === oldId ? { ...n, id: nextId } : n)));
+      setAgentBaselines((b) => {
+        if (!(oldId in b)) return b;
+        const next = { ...b };
+        delete next[oldId];
+        next[nextId] = b[oldId];
+        return next;
+      });
+      setSelection((sel) =>
+        sel?.kind === "agent" && sel.id === oldId ? { kind: "agent", id: nextId } : sel
+      );
+      return null;
+    },
+    [canvasAgents]
+  );
+
+  /** POST /api/agents — the authority (app/schemas/agent.py) validates BEFORE
+   *  writing. Throws on failure; callers own the busy/toast bookkeeping. */
+  const saveAgentNode = useCallback(
+    async (id: string): Promise<void> => {
+      const agent = canvasAgents.find((a) => a.id === id);
+      if (!agent) throw new Error(`no canvas agent node "${id}"`);
+      const doc = draftToDoc(agent.draft);
+      await saveAgent(id, agent.draft.name.trim() || null, doc);
+      setAgentBaselines((b) => ({ ...b, [id]: JSON.stringify(doc) }));
+    },
+    [canvasAgents]
+  );
+
+  const onAgentSave = useCallback(
+    async (id: string) => {
+      setAgentBusy({ id, label: "saving…" });
+      try {
+        await saveAgentNode(id);
+        await refreshDoors();
+        notify(true, `Saved agent ${id} (validated on the backend).`);
+      } catch (e) {
+        notify(false, e instanceof Error ? e.message : String(e));
+      } finally {
+        clearAgentBusy(id);
+      }
+    },
+    [saveAgentNode, refreshDoors, notify, clearAgentBusy]
+  );
+
+  const onAgentActivate = useCallback(
+    async (id: string) => {
+      setAgentBusy({ id, label: "activating…" });
+      try {
+        // Bind-then-run: an unsaved draft must be the saved one that binds.
+        if (agentDirty[id]) await saveAgentNode(id);
+        await activateAgent(id);
+        await refreshDoors();
+        notify(true, `Activated agent ${id} (the bind is in effect for the next turn).`);
+      } catch (e) {
+        notify(false, e instanceof Error ? e.message : String(e));
+      } finally {
+        clearAgentBusy(id);
+      }
+    },
+    [agentDirty, saveAgentNode, refreshDoors, notify, clearAgentBusy]
+  );
+
+  const onDeleteSavedAgent = useCallback(
+    async (id: string) => {
+      const ok = window.confirm(
+        `Delete saved agent "${id}"? This is permanent — the canvas node stays as an unsaved draft.`
+      );
+      if (!ok) return;
+      setAgentBusy({ id, label: "deleting…" });
+      try {
+        await deleteAgent(id);
+        // The draft loses its saved twin: it is unsaved again (dirty = true).
+        setAgentBaselines((b) => {
+          const next = { ...b };
+          delete next[id];
+          return next;
+        });
+        await refreshDoors();
+        notify(true, `Deleted saved agent ${id}.`);
+      } catch (e) {
+        notify(false, e instanceof Error ? e.message : String(e));
+      } finally {
+        clearAgentBusy(id);
+      }
+    },
+    [refreshDoors, notify, clearAgentBusy]
+  );
+
+  const onAgentTestMcp = useCallback(
+    async (id: string, alias: string) => {
+      setAgentBusy({ id, label: `testing ${alias}…` });
+      try {
+        // "test MCP" checks the SAVED document's alias — save first so the
+        // connection check is the author's current intent, not a stale one.
+        await saveAgentNode(id);
+        const res = await testAgentMcp(id, alias);
+        notify(
+          true,
+          `mcp "${alias}": connected — ${
+            res.tools.length > 0 ? res.tools.join(", ") : "no tools advertised"
+          }`
+        );
+      } catch (e) {
+        notify(false, e instanceof Error ? e.message : String(e));
+      } finally {
+        clearAgentBusy(id);
+      }
+    },
+    [saveAgentNode, notify, clearAgentBusy]
+  );
+
   // ── library operations ────────────────────────────────────────────────────
 
   const loadGraph = useCallback(
@@ -572,6 +815,8 @@ export default function Page() {
             activeId={activeAgent}
             online={online === true}
             onOpenLoop={(id) => loadGraph(id)}
+            onNewAgent={() => addAgentNode()}
+            onEditOnCanvas={(id) => void openAgentOnCanvas(id)}
           />
           <GraphLibrary
             graphs={graphs}
@@ -585,6 +830,7 @@ export default function Page() {
             primitives={primitives}
             apiOnline={online === true && apiLive}
             onAdd={addNode}
+            onAddAgent={() => addAgentNode()}
           />
         </aside>
 
@@ -616,6 +862,21 @@ export default function Page() {
             nodeStates={nodeStates}
             nodeOutputs={nodeOutputs}
             skipDetails={skipDetails}
+            /* the agent layer (the second document family, docs/agent-graph.md) */
+            canvasAgents={canvasAgents}
+            activeAgentId={activeAgent}
+            agentDirty={agentDirty}
+            agentBusy={agentBusy}
+            savedGraphIds={savedGraphIds}
+            currentGraphId={graph.id}
+            onMoveAgent={moveAgentNode}
+            onRemoveAgent={removeAgentNode}
+            onAgentDraft={patchAgentDraft}
+            onAgentRename={renameAgentNode}
+            onAgentSave={(id) => void onAgentSave(id)}
+            onAgentActivate={(id) => void onAgentActivate(id)}
+            onAgentDeleteSaved={(id) => void onDeleteSavedAgent(id)}
+            onAgentTestMcp={(id, alias) => void onAgentTestMcp(id, alias)}
           />
         </section>
 

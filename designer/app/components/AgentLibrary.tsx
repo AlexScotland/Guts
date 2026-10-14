@@ -21,6 +21,12 @@ interface Props {
   online: boolean;
   /** Open the agent's loop ref (a saved turn-graph) in the canvas. */
   onOpenLoop: (graphId: string) => void;
+  /** Author the agent: add a fresh agent node to the canvas
+   *  (docs/agent-graph.md — the authoring surface). Optional so the
+   *  read-only panel stays usable standalone. */
+  onNewAgent?: () => void;
+  /** Load a saved agent onto the canvas as an editable agent node. */
+  onEditOnCanvas?: (id: string) => void;
 }
 
 type LoopView =
@@ -32,7 +38,14 @@ type LoopView =
  *  turn-graph): one line per agent, the bundle's shape when expanded, and
  *  the `loop` reference expandable into the referenced turn-graph.
  *  Read-only here — binding happens through the chat panel (bind-then-run). */
-export default function AgentLibrary({ agents, activeId, online, onOpenLoop }: Props) {
+export default function AgentLibrary({
+  agents,
+  activeId,
+  online,
+  onOpenLoop,
+  onNewAgent,
+  onEditOnCanvas,
+}: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [bundles, setBundles] = useState<Record<string, AgentDetail["agent"] | undefined>>({});
   const [bundleErrors, setBundleErrors] = useState<Record<string, string>>({});
@@ -106,6 +119,16 @@ export default function AgentLibrary({ agents, activeId, online, onOpenLoop }: P
         <span className={styles.hint} title="Persona + model + MCP + skills + exactly one loop child, bound to the context at turn start (bind-then-run).">
           layer above
         </span>
+        {onNewAgent && (
+          <button
+            type="button"
+            className={styles.add}
+            onClick={onNewAgent}
+            title="Add an agent node to the canvas — persona, model, mcp, skills, settings, around one loop (a saved graph ref or a built-in alias). Save/Activate/Delete/Test-MCP run over the REST door."
+          >
+            + new
+          </button>
+        )}
       </header>
       <ul className={styles.list}>
         {agents === null ? (
@@ -145,6 +168,18 @@ export default function AgentLibrary({ agents, activeId, online, onOpenLoop }: P
                     )}
                     {bundle && b && (
                       <>
+                        {onEditOnCanvas && (
+                          <div className={styles.actions}>
+                            <button
+                              type="button"
+                              className={styles.action}
+                              onClick={() => onEditOnCanvas(a.id)}
+                              title="Open this saved document as an agent node on the canvas — edit, Save/Activate, and test the MCP aliases there (the canvas draft starts in sync with the saved document)"
+                            >
+                              edit on canvas →
+                            </button>
+                          </div>
+                        )}
                         <p className={styles.row}>
                           <span className={styles.tag}>persona</span>
                           <span className={styles.value}>

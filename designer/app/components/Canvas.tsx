@@ -19,12 +19,18 @@ import {
   type PrimitiveMeta,
   type Pt,
 } from "../lib/graph";
+import AgentCard from "./AgentCard";
 import { type BranchSpec } from "../lib/types";
 import type { NodeOutputs, NodeRunState } from "../lib/run";
+import { type AgentDraft, type CanvasAgent } from "../lib/agentNode";
 
 export type Selection =
   | { kind: "node"; id: string }
-  | { kind: "edge"; key: string };
+  | { kind: "edge"; key: string }
+  // The agent node (the layer above, docs/agent-graph.md): a separate
+  // selection KIND so an agent id can never be confused with a turn-graph
+  // node id (two document families, one canvas).
+  | { kind: "agent"; id: string };
 
 interface Props {
   graph: CanvasGraph;
@@ -50,6 +56,29 @@ interface Props {
   /** Per-node last output (docs/ai-per-node-outputs.md): shown in the
    *  on-node inspector popover when there are entries. */
   nodeOutputs?: Map<string, NodeOutputs> | null;
+
+  // ── the agent layer (docs/agent-graph.md — the authoring surface) ────────
+  /** Canvas agent nodes: drafts of agent documents (a SECOND document
+   *  family, never serialized into the turn-graph doc). */
+  canvasAgents?: CanvasAgent[];
+  /** The store's active agent id (the card's ● marker). */
+  activeAgentId?: string | null;
+  /** Per-agent unsaved-changes flag (the card's footer). */
+  agentDirty?: Record<string, boolean>;
+  /** The in-flight action for one agent ("saving…" / "testing web…"). */
+  agentBusy?: { id: string; label: string } | null;
+  /** Saved turn-graph ids — the loop `ref` slot's options. */
+  savedGraphIds?: string[];
+  /** The current canvas's turn-graph id (the natural first ref option). */
+  currentGraphId?: string;
+  onMoveAgent?: (id: string, x: number, y: number) => void;
+  onRemoveAgent?: (id: string) => void;
+  onAgentDraft?: (id: string, patch: Partial<AgentDraft>) => void;
+  onAgentRename?: (oldId: string, nextId: string) => string | null;
+  onAgentSave?: (id: string) => void;
+  onAgentActivate?: (id: string) => void;
+  onAgentDeleteSaved?: (id: string) => void;
+  onAgentTestMcp?: (id: string, alias: string) => void;
 }
 
 function edgeKey(e: CanvasEdge): string {
@@ -80,6 +109,7 @@ function bezier(x1: number, y1: number, x2: number, y2: number, flip = false): s
 
 type Drag =
   | { kind: "node"; id: string; dx: number; dy: number }
+  | { kind: "agent"; id: string; dx: number; dy: number }
   | { kind: "pan"; dx: number; dy: number };
 
 interface ConnectState {
@@ -107,6 +137,20 @@ export default function Canvas({
   nodeStates = null,
   nodeOutputs = null,
   skipDetails = null,
+  canvasAgents = [],
+  activeAgentId = null,
+  agentDirty = {},
+  agentBusy = null,
+  savedGraphIds = [],
+  currentGraphId = "",
+  onMoveAgent,
+  onRemoveAgent,
+  onAgentDraft,
+  onAgentRename,
+  onAgentSave,
+  onAgentActivate,
+  onAgentDeleteSaved,
+  onAgentTestMcp,
 }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [pan, setPan] = useState({ x: 50, y: 30 });
@@ -141,26 +185,29 @@ export default function Canvas({
   useEffect(() => {
     if (!drag && !connect) return;
     const move = (e: PointerEvent) => {
-      if (drag?.kind === "node") {
+      if (drag && (drag.kind === "node" || drag.kind === "agent")) {
         const start = clickStartRef.current;
         if (start && grabIsCleanClick(start, { x: e.clientX, y: e.clientY })) {
           // Within the click threshold: hand jitter of a plain press, not a
-          // drag. Neither dismiss the inspector nor nudge the node — the
+          // drag. Neither dismiss the inspector nor nudge the card — the
           // release below still counts as a clean click (select).
         } else {
           if (start) {
             // A REAL move crossed the threshold: this is a drag now. Dismiss
-            // any open node inspector so it doesn't follow the node we're
+            // any open inspector so it doesn't follow the card we're
             // repositioning.
             clickStartRef.current = null;
             onSelect(null);
           }
           const p = toContent(e.clientX, e.clientY);
-          onMoveNode(
-            drag.id,
-            Math.max(0, p.x - drag.dx),
-            Math.max(0, p.y - drag.dy)
-          );
+          const moveCard = drag.kind === "node" ? onMoveNode : onMoveAgent;
+          if (moveCard) {
+            moveCard(
+              drag.id,
+              Math.max(0, p.x - drag.dx),
+              Math.max(0, p.y - drag.dy)
+            );
+          }
         }
       } else if (drag?.kind === "pan") {
         setPan({ x: e.clientX - drag.dx, y: e.clientY - drag.dy });
@@ -171,12 +218,16 @@ export default function Canvas({
       }
     };
     const up = () => {
-      // A node grab that never crossed the click threshold is a clean CLICK
-      // → select the node (or keep it selected), which opens its on-node
-      // inspector popover. Jittery clicks stay clean — that is exactly the
-      // case that used to close the popover.
-      if (drag?.kind === "node" && clickStartRef.current) {
-        onSelect({ kind: "node", id: drag.id });
+      // A card grab (turn-graph node OR agent node) that never crossed the
+      // click threshold is a clean CLICK → select that kind of card (the
+      // separate `kind` keeps the two document families honest), opening
+      // its on-node inspector popover. Jittery clicks stay clean — exactly
+      // the case that used to close the popover.
+      if (
+        (drag?.kind === "node" || drag?.kind === "agent") &&
+        clickStartRef.current
+      ) {
+        onSelect({ kind: drag.kind, id: drag.id });
       }
       setDrag(null);
       setConnect(null);
@@ -199,6 +250,14 @@ export default function Canvas({
     clickStartRef.current = { x: e.clientX, y: e.clientY };
     const p = toContent(e.clientX, e.clientY);
     setDrag({ kind: "node", id: node.id, dx: p.x - node.x, dy: p.y - node.y });
+  };
+
+  const startAgentDrag = (e: React.PointerEvent, agent: CanvasAgent) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    clickStartRef.current = { x: e.clientX, y: e.clientY };
+    const p = toContent(e.clientX, e.clientY);
+    setDrag({ kind: "agent", id: agent.id, dx: p.x - agent.x, dy: p.y - agent.y });
   };
 
   const startPan = (e: React.PointerEvent) => {
@@ -257,12 +316,13 @@ export default function Canvas({
         return;
       if ((e.key === "Delete" || e.key === "Backspace") && selection) {
         if (selection.kind === "node") onRemoveNode(selection.id);
+        else if (selection.kind === "agent") onRemoveAgent?.(selection.id);
         else onRemoveEdge(selection.key);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selection, onRemoveNode, onRemoveEdge]);
+  }, [selection, onRemoveNode, onRemoveEdge, onRemoveAgent]);
 
   // ── edges ────────────────────────────────────────────────────────────────
 
@@ -406,6 +466,37 @@ export default function Canvas({
             onRemove={onRemoveNode}
             onNode={onNode}
             onBranches={onBranches}
+            onClose={() => onSelect(null)}
+          />
+        ))}
+
+        {/* The agent layer: one card per agent-document draft. A separate
+            document family — rendered here for positioning only, never
+            serialized into the turn-graph doc. No ports, no wires: the loop
+            child is the ref/alias slot on the card. */}
+        {canvasAgents.map((agent) => (
+          <AgentCard
+            key={agent.id}
+            agent={agent}
+            selected={selection?.kind === "agent" && selection.id === agent.id}
+            active={activeAgentId === agent.id}
+            dirty={Boolean(agentDirty[agent.id])}
+            savedGraphIds={savedGraphIds}
+            graphId={currentGraphId}
+            otherAgentIds={canvasAgents
+              .map((a) => a.id)
+              .filter((a) => a !== agent.id)}
+            busyLabel={
+              agentBusy && agentBusy.id === agent.id ? agentBusy.label : null
+            }
+            onCardPointerDown={startAgentDrag}
+            onRemove={(id) => onRemoveAgent?.(id)}
+            onDraft={(id, patch) => onAgentDraft?.(id, patch)}
+            onRename={(oldId, nextId) => onAgentRename?.(oldId, nextId) ?? null}
+            onSave={(id) => onAgentSave?.(id)}
+            onActivate={(id) => onAgentActivate?.(id)}
+            onDeleteSaved={(id) => onAgentDeleteSaved?.(id)}
+            onTestMcp={(id, alias) => onAgentTestMcp?.(id, alias)}
             onClose={() => onSelect(null)}
           />
         ))}

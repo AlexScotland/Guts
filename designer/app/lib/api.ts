@@ -15,6 +15,7 @@
 import {
   ApiError,
   type AgentDetail,
+  type AgentDocument,
   type AgentsStatus,
   type ComponentsStatus,
   type GraphDoc,
@@ -237,6 +238,89 @@ export async function getAgent(id: string): Promise<AgentDetail> {
     guardNetwork(err, "Could not reach the AI backend. Is it running?");
   }
   return handle(res, (b) => b as AgentDetail);
+}
+
+/** POST /api/agents — save (create/overwrite) the agent document for `id`.
+ *  Body `{ id, name?, agent }`; the backend validates BEFORE persisting —
+ *  invalid is a 400, never a saved file. Returns the family shape
+ *  `{ active, agents: […] }`. */
+export async function saveAgent(
+  id: string,
+  name: string | null,
+  doc: AgentDocument
+): Promise<AgentsStatus> {
+  const body: { id: string; name?: string; agent: AgentDocument } = { id, agent: doc };
+  if (name && name.trim()) body.name = name;
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/agents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    guardNetwork(err, "Could not reach the AI backend. Is it running?");
+  }
+  return handle(res, (b) => b as AgentsStatus);
+}
+
+/** POST /api/agents/{id}/activate — make a saved agent the ACTIVE one.
+ *  Bind-first: a connection/model/persona that can't be built is a VISIBLE
+ *  400 (the previous activation untouched), never a silent empty toolset. */
+export async function activateAgent(id: string): Promise<AgentsStatus> {
+  let res: Response;
+  try {
+    res = await fetch(
+      `${API_URL}/api/agents/${encodeURIComponent(id)}/activate`,
+      { method: "POST" }
+    );
+  } catch (err) {
+    guardNetwork(err, "Could not reach the AI backend. Is it running?");
+  }
+  return handle(res, (b) => b as AgentsStatus);
+}
+
+/** DELETE /api/agents/{id} — drop the saved document (404 when unknown).
+ *  Returns the family shape `{ active, agents: […] }`. */
+export async function deleteAgent(id: string): Promise<AgentsStatus> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/agents/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  } catch (err) {
+    guardNetwork(err, "Could not reach the AI backend. Is it running?");
+  }
+  return handle(res, (b) => b as AgentsStatus);
+}
+
+/** The `POST /api/agents/{id}/mcp/test` result: the alias's fresh
+ *  connection check + the tools it actually advertised. */
+export interface McpTestResult {
+  alias: string;
+  transport: string | null;
+  detail: string;
+  tools: string[];
+}
+
+/** POST /api/agents/{id}/mcp/test — a GENUINE connection check on one of
+ *  the agent's declared aliases (it must re-earn the connection; an
+ *  unreachable server is a visible 400, never a silent pass). */
+export async function testAgentMcp(id: string, alias: string): Promise<McpTestResult> {
+  let res: Response;
+  try {
+    res = await fetch(
+      `${API_URL}/api/agents/${encodeURIComponent(id)}/mcp/test`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ alias }),
+      }
+    );
+  } catch (err) {
+    guardNetwork(err, "Could not reach the AI backend. Is it running?");
+  }
+  return handle(res, (b) => b as McpTestResult);
 }
 
 /** GET /health — the connection indicator. */

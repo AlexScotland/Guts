@@ -3,11 +3,14 @@
 **Status:** implemented (v1) — contract, store + the `/api/agents` door, the
 MCP client/adapter/pool, bind-then-run (model/MCP/skills/persona onto the
 existing seams, visible-failure model), the chat panel's list/enable/test MCP
-surface, **and the designer's read-only Agents library** (one line per agent;
+surface, **the designer's read-only Agents library** (one line per agent;
 the bundle's shape on expand; the `loop` ref expandable into the referenced
-turn-graph, "open in canvas"). Build order 1–7 is complete; this document
-stays the source of truth for v1 — and names what comes next (the nested/routed
-reading) as the roadmap.
+turn-graph, "open in canvas"), **and the designer's authoring surface** — the
+**agent node on the canvas** (add/edit/save/activate/delete/test-MCP over the
+`/api/agents` door; the loop child wired as a saved-graph `ref` or built-in
+`alias`; the backend validator stays the authority). Build order 1–8 is
+complete; this document stays the source of truth for v1 — and names what
+comes next (the nested/routed reading) as the roadmap.
 **Date:** 2026-10-13 — Supersedes: the "agent groups" note in
 [ai-routing-nodes.md](ai-routing-nodes.md#out-of-scope-for-this-branch)
 (the *nested/routed* reading of it, which is deferred here).
@@ -187,7 +190,7 @@ the declared tools. It is deliberately a *separate* mechanism from the
 | Tool merge | `ToolRegistry` in the context; MCP adapter registers like any `@tool` in [`ALL_TOOLS`](../app/main.py) |
 | Discovery door | `GET /api/agents` (+ `/{id}`, DELETE, `/{id}/activate`, `/{id}/mcp/test` — the panel's "test" opens a fresh connection and lists the advertised tools); `describe()` gains an **`agents`** block, parallel to its `graphs` block |
 | MCP adapter | new `app/mcp/` (`client.py`, `adapter.py`, `pool.py`) |
-| Config surface (frontend) | the chat panel's ComponentPanel-style list/enable/**test** MCP, plus the [designer](../designer/)'s read-only **Agents library** — one line per agent, the bundle's shape on expand, and the `loop` ref expandable into the referenced turn-graph ("open in canvas"); `designer/app/components/AgentLibrary.tsx` + `lib/agents.ts` |
+| Config surface (frontend) | the chat panel's ComponentPanel-style list/enable/**test** MCP, the [designer](../designer/)'s read-only **Agents library** (one line per agent, the bundle's shape on expand, the `loop` ref expandable into the referenced turn-graph), **and the designer's agent-node authoring surface** — `AgentCard`/`AgentPanel` over the REST door, the `lib/agentNode.ts` draft contract, and the `page.tsx` wiring (add / edit-on-canvas / rename / save / activate / delete / test-MCP); `designer/app/components/AgentLibrary.tsx` + `lib/agents.ts` + `lib/agentNode.ts` |
 
 ## Validator rules (`app/schemas/agent.py` — `validate_agent(doc) → AgentDoc`, pure/stdlib)
 
@@ -202,6 +205,49 @@ the declared tools. It is deliberately a *separate* mechanism from the
 - `settings`: keys ⊆ the six slot names.
 - Unknown top-level key → `AgentError` (closed vocabulary; nothing routes
   silently).
+
+## The agent node on the canvas (the designer's authoring surface)
+
+The designer canvas is a **design** surface over *two* document families:
+the turn-graph (the closed 9-primitive dataflow vocabulary) and the agent
+document (the capability bundle above it). The **agent node** is the canvas's
+rendering of the *second* family — a positional, editable draft of one agent
+document, saved through the same closed door and validator (the backend
+remains the authority; a 400 is the honest save failure). It is reached the
+way every node is: the Palette's **+ add agent** (a fresh, valid minimal
+draft), or the Agents library's **edit on canvas →** (a saved document loaded
+into the draft, starting in sync with it). The card's footer tracks the
+draft-vs-saved diff, and the in-node inspector is where Save / Activate /
+Delete-saved / Test-MCP hit the door:
+
+| Field | Shape | Rule (mirrors `schemas/agent.py`) |
+|---|---|---|
+| identity | `id` (its saved-agent REST id) + canvas `x,y` | `id` is a `[A-Za-z0-9_-]` token (the store's rule); positions are canvas-only, never persisted into the document |
+| `name?` | non-empty string when set | display name only |
+| `prompt?` | non-empty string when set | persona (replaces `AGENTS.md`) |
+| `model?` | `{ provider: "ollama", id }` | closed provider enum (v1) |
+| `mcp[]` | `{ alias, transport, url\|command }` | alias unique per document; `stdio` ⇒ `command`; `sse/http` ⇒ `url` |
+| `skill[]` | `{ path, tools? }` | `path` under the app root (the backend decides at save time) |
+| `settings?` | `slot → alias` | keys ⊆ the six slot names |
+| `loop` slot | `{ ref: <saved-graph-id> }` **XOR** `{ alias: "plan_execute" \| "direct" }` | exactly one — never both, never neither (the one child that runs) |
+
+Invariants — the node is a **design-layer concern, not a slot**:
+
+- The agent node **never enters the turn-graph document**: the canvas's
+  `toDoc()` keeps emitting 9-primitive nodes and edges only; an agent node
+  serializes to exactly one agent document (`draftToDoc`) for
+  `POST /api/agents`. Nothing routes silently into the loop.
+- The agent node has **no dataflow ports** — it produces/consumes no
+  `goal/context/plan/result`. Its only child, `loop`, is rendered as a
+  **ref/alias slot on the card** (a chip naming the saved graph id, or the
+  built-in alias), because the wire *agent → loop* is a **reference**, never
+  an in-canvas edge; canvas edges connect 9-primitive nodes only.
+- `checkAgentDraft()` is a **preflight mirror** of the validator's cheap
+  rules (loop XOR + known aliases, transport pairing, alias uniqueness,
+  settings slot keys, provider enum) — surfaced before save, never a new
+  authority.
+- Nothing in the node touches `schemas/graph.py`, `components/primitives/`,
+  the 9-primitive vocabulary, or the pinned per-turn determinism oracle.
 
 ## Failure model (consistent with the turn-graph)
 
@@ -272,6 +318,18 @@ the declared tools. It is deliberately a *separate* mechanism from the
    agent, the bundle's shape, the loop ref expandable with "open in canvas")*
 7. Docs cross-refs + `app/memory/architecture.md` refinement. *(done — this
    status line, the README feature blurb + docs list, and the memory entry)*
+8. The designer's **authoring surface** (items 1+2 of the continuation): the
+   agent-node contract `lib/agentNode.ts` (draft ⇄ document, preflight mirror,
+   the id rule) pinned by `agentNode.test.mjs` (fakes only); the canvas's
+   agent layer (a separate selection kind, drag/select/delete) in
+   `Canvas.tsx`; the on-node inspector `AgentCard`/`AgentPanel` (every field +
+   Save/Activate/Delete-saved/Test-MCP over the REST door); the `page.tsx`
+   wiring (add an agent node; open a saved agent from the library; rename;
+   dirty = draft-vs-saved diff; the in-flight action per node); the
+   "add agent" entry in the Palette and the library's "+ new" / "edit on
+   canvas →". *(done — `09511cd`: `agentNode.ts` + tests, `AgentCard`/
+   `AgentPanel`, the `Canvas` agent layer, the `page.tsx` wiring, the
+   `Palette`/`AgentLibrary` entry points, the `api.ts` door client)*
 
 ## Why
 

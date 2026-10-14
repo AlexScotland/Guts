@@ -252,3 +252,43 @@
 .emptyNote {
   padding: 4px 2px;
 }
+
+/* The header's "+ new" — add an agent node to the canvas (authoring). */
+.add {
+  margin-left: 8px;
+  padding: 2px 9px;
+  font-size: 10.5px;
+  font-weight: 650;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  align-self: center;
+}
+
+.add:hover {
+  background: var(--accent-soft);
+}
+
+/* The expanded bundle's "edit on canvas →" — the same dashed accent
+   language as "open in canvas →", one face for both door-openers. */
+.actions {
+  display: flex;
+}
+
+.action {
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: transparent;
+  border: 1px dashed color-mix(in srgb, var(--accent) 50%, transparent);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.action:hover {
+  background: var(--accent-soft);
+}

@@ -80,8 +80,10 @@ set of skills, an optional persona, and settings overrides — around **exactly
 one** `loop` child (a saved graph id or a built-in alias). Bind the bundle at
 turn start and run the existing loop **unchanged**, so "a different agent = a
 different model/MCP/skills/flow" is a *validated document + activate*, not an
-edit-and-restart. Contract and the full surface (chat panel + read-only designer
-Agents library): [agent-graph.md](docs/agent-graph.md).
+edit-and-restart. Contract and the full surface (chat panel, the designer's
+read-only Agents library, and the designer's **agent node** — add/edit/
+save/activate/delete/test-MCP on the canvas over the REST door):
+[agent-graph.md](docs/agent-graph.md).
 
 ## Six samples that walk the contract
 
@@ -223,8 +225,9 @@ docs/         the tutorial + the design docs; the graph contract and its
                agent-graph.md          (layer above: the agent as a
                                        capability-composition doc — model +
                                        MCP + skills + exactly one loop;
-                                       implemented (v1), incl. the
-                                       designer's read-only Agents library)
+                                       implemented (v1): read-only Agents
+                                       library + agent-node authoring
+                                       surface on the canvas)
 ```
 
 ## Design principles
