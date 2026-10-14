@@ -175,6 +175,13 @@ class AgentStore:
     # ── activation ───────────────────────────────────────────────
 
     @property
+    def skill_root(self) -> str:
+        """The directory every ``skill.path`` resolves under (the bind path
+        reads skill text relative to it — same root the save-time validator
+        used, so the two doors agree)."""
+        return self._skill_root
+
+    @property
     def active_id(self) -> str | None:
         with self._lock:
             return self._active_id

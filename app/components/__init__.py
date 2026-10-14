@@ -11,6 +11,13 @@ let a whole configuration be swapped in one call.
         register_builtin_components, apply_manifest,
     )
 """
+from .agent_bind import (
+    AgentBindError,
+    bind_agent,
+    ensure_agent_bound,
+    get_mcp_pool,
+    reset_mcp_pool,
+)
 from .builtin import (
     COMPONENT_ALIASES,
     PRESETS,
@@ -33,6 +40,7 @@ from .registry import (
 from .slots import ALL_SLOTS, ComponentSlot
 
 __all__ = [
+    "AgentBindError",
     "AgentLoop",
     "ALL_SLOTS",
     "ComponentAliasError",
@@ -49,7 +57,11 @@ __all__ = [
     "PlanExecuteLoop",
     "StaticRegistry",
     "apply_manifest",
+    "bind_agent",
+    "ensure_agent_bound",
+    "get_mcp_pool",
     "load_manifest",
+    "reset_mcp_pool",
     "register_agent_components",
     "register_builtin_components",
     "register_graph_components",

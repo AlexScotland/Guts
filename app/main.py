@@ -23,6 +23,7 @@ from components import (
     ComponentRegistry,
     ComponentSlot,
     apply_manifest,
+    ensure_agent_bound,
     register_agent_components,
     register_builtin_components,
     register_graph_components,
@@ -104,8 +105,14 @@ def build_agent(registry: ComponentRegistry | None = None, agent_id: str = "agen
     this): each agent gets a FRESH conversation store from the memory slot
     (per-agent semantics), so concurrent requests never share a conversation.
     The shared registry is what carries hot-swap state across turns.
+
+    The active agent document (docs/agent-graph.md) is bound HERE, per turn:
+    the signature check makes an unchanged document a no-op, so this is the
+    "lazily at the first turn" half of bind-then-run. The bind lands on the
+    snapshot this call builds — the next turn, never mid-flight.
     """
     registry = registry or get_registry()
+    ensure_agent_bound(registry)
     conversation = registry.create(ComponentSlot.MEMORY)
     state = AgentState(agent_id=agent_id, goal=None, conversation=conversation)
 

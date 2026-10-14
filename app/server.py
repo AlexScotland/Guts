@@ -322,13 +322,33 @@ def delete_agent(agent_id: str):
 def activate_agent(agent_id: str):
     """Make a saved agent the ACTIVE one (flips the store's active id).
 
-    Bind-then-run: activation lands on the NEXT /api/chat turn (the pinned
-    per-turn-snapshot semantics) exactly like every slot swap — no restart,
-    no in-flight change. The bind itself (model/MCP/skills/persona onto the
-    shared context) happens over the existing slot/turn-graph seams; this
-    route owns the door + the active pointer.
+    Bind-then-run (docs/agent-graph.md): the document is BOUND first —
+    model/MCP/skills/persona onto the shared context over the existing
+    slot/turn-graph seams — and the active pointer flips only when the bind
+    succeeds. A connection/model/persona that can't be built is a VISIBLE
+    bind failure (a 400, the previous activation untouched), never a silent
+    empty toolset or missing persona. The bind lands on the NEXT /api/chat
+    turn (the pinned per-turn-snapshot semantics), exactly like every slot
+    swap — no restart, no in-flight change.
     """
     store = get_agent_store()
+    try:
+        doc = store.get(agent_id)
+    except (KeyError, AgentError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    try:
+        from components.agent_bind import AgentBindError, bind_agent
+
+        bind_agent(
+            get_registry(),
+            doc,
+            agent_id=agent_id,
+            persona_dir=store.directory,
+            skill_root=store.skill_root,
+            graph_store=get_graph_store(),
+        )
+    except AgentBindError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     try:
         store.set_active(agent_id)
     except (KeyError, AgentError) as exc:

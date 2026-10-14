@@ -28,6 +28,11 @@ class ToolRegistry:
     def names(self):
         return list(self._tools.keys())
 
+    def unregister(self, name: str) -> bool:
+        """Drop one tool by name (the agent rebind path: an MCP alias no
+        longer declared must not keep serving a stale tool). True if present."""
+        return self._tools.pop(name, None) is not None
+
     @staticmethod
     def _accepted_params(tool: BaseTool) -> set[str] | None:
         """Param names the underlying function will accept (or None if unknown)."""

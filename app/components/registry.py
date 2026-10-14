@@ -126,6 +126,22 @@ class ComponentRegistry:
                 )
             return self._activate_locked(slot, alias)
 
+    def rebuild(self, slot) -> object:
+        """Re-run the ACTIVE alias's factory (a forced re-activation).
+
+        ``activate`` is idempotent for the current alias, so it is the wrong
+        door after a context change: the cached instance was built against
+        the OLD context (a new LLM, say). ``rebuild`` drops that assumption
+        for one slot and re-runs the active alias's factory against the
+        CURRENT context — the agent-bind model path (docs/agent-graph.md)
+        needs exactly this, with the same atomicity as activation.
+        """
+        slot = ComponentSlot(slot)
+        with self._lock:
+            if self._aliases.get(slot) is None:
+                raise ComponentNotRegisteredError(slot)
+            return self._activate_locked(slot, self._aliases[slot])
+
     def activate_preset(self, name: str) -> dict:
         """Swap every slot of a preset atomically.
 
