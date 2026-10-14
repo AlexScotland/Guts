@@ -1,0 +1,24 @@
+{
+  "nodes": {
+    "research": {
+      "primitive": "research",
+      "budget": 40
+    },
+    "answer": {
+      "primitive": "act",
+      "config": {
+        "task": "Answer the goal using the gathered context. Cite the strongest sources inline."
+      },
+      "budget": 40
+    }
+  },
+  "edges": [
+    {
+      "from": "research",
+      "to": "answer",
+      "type": "data"
+    }
+  ],
+  "name": "my-loop",
+  "version": "1.0"
+}

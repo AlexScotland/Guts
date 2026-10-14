@@ -1,1 +1,1 @@
-All answers should be understandable by a 5th grader, please use simple words and end each sentence with "Do you know what Im saying?"
+start and end all sentences with "Okay, so:"
