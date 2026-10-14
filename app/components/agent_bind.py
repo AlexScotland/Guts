@@ -30,6 +30,17 @@ The failure model is the doc's: a bind failure is VISIBLE — an
 toolset or missing persona. The run phase is untouched: the existing
 per-turn snapshot (``_snapshot_components`` → ``loop.run``) proceeds
 byte-for-byte as today; a bind made mid-turn lands on the NEXT turn.
+
+Detach (the delete path)
+------------------------
+A bind mutates PROCESS-SHARED state (the registry's loop slot, the graph
+store's active id, ``context.llm``, the shared ToolRegistry, slot aliases,
+the persona path). Deleting the bound agent therefore must UNDO exactly
+that: every bind goes through :func:`bind_and_remember` (captures the
+pre-bind snapshot), and :func:`detach_agent` (delete route) /
+:func:`ensure_agent_bound` (every other path) restore it. A deleted agent
+never keeps running the next turn — its loop, model, MCP tools, settings
+and persona all go back to the pre-bind pipeline.
 """
 from __future__ import annotations
 
@@ -58,7 +69,7 @@ _LLM_SLOTS = (ComponentSlot.GOAL_RESOLVER, ComponentSlot.PLANNER, ComponentSlot.
 _MCP_PREFIX = "mcp_"
 _UNSAFE_NAME = re.compile(r"[^a-zA-Z0-9_-]")
 
-_EXTRAS_BIND_STATE = "agent_bind"     # {agent, signature, prev_agent_path}
+_EXTRAS_BIND_STATE = "agent_bind"     # {agent, signature, prev: <pre-bind snapshot>}
 _EXTRAS_MCP = "mcp"                    # {alias: [tool names]} — the bound set
 _EXTRAS_PERSONA_PATH = "persona_path"  # the composed persona file, if any
 
@@ -357,6 +368,183 @@ def bind_agent(
 # ── the lazy per-turn hook (bind at the first turn, idempotent) ────────────
 
 
+def _capture_bind_state(registry: ComponentRegistry, graph_store=None) -> dict:
+    """A snapshot of the shared state a bind is about to mutate — what
+    ``restore_active_agent`` rolls back to: the persona path, the loop slot's
+    alias PLUS the graph store's active id, the live LLM, and the active
+    alias of each settings slot. (MCP bindings are already tracked per alias
+    in ``_EXTRAS_MCP``, so restore reads them directly.)"""
+    context = registry.context
+    gs = graph_store or _graph_store_for(registry)
+    return {
+        "agent_path": context.config.agent_path if context.config is not None else None,
+        "loop": {
+            "alias": registry.active_alias(ComponentSlot.LOOP),
+            "graph_active": gs.active_id,
+        },
+        "llm": context.llm,
+        "settings": {
+            slot.value: registry.active_alias(slot)
+            for slot in (
+                ComponentSlot.GOAL_RESOLVER,
+                ComponentSlot.PLANNER,
+                ComponentSlot.EXECUTOR,
+                ComponentSlot.EVALUATOR,
+                ComponentSlot.MEMORY,
+            )
+            if registry.active_alias(slot)
+        },
+    }
+
+
+def bind_and_remember(
+    registry: ComponentRegistry,
+    doc: dict,
+    *,
+    agent_id: str | None = None,
+    pool: McpPool | None = None,
+    model_factory=None,
+    skill_root: str | None = None,
+    persona_dir: str | None = None,
+    graph_store=None,
+) -> dict:
+    """``bind_agent`` plus the bind-state record (identity + signature + the
+    pre-bind snapshot) that detachment needs.
+
+    Every live bind goes through this — the UI's activate route AND the lazy
+    per-turn hook alike — so deleting the agent can roll back exactly what
+    this bind changed (the pre-bind state is captured HERE, immediately
+    before the bind, never later)."""
+    state = {
+        "agent": agent_id,
+        "signature": _doc_signature(agent_id, doc),
+        "prev": _capture_bind_state(registry, graph_store),
+    }
+    try:
+        bound = bind_agent(
+            registry,
+            doc,
+            agent_id=agent_id,
+            pool=pool,
+            model_factory=model_factory,
+            skill_root=skill_root,
+            persona_dir=persona_dir,
+            graph_store=graph_store,
+        )
+    except AgentBindError:
+        raise
+    except Exception as exc:  # a seam failure is still a VISIBLE bind failure
+        raise AgentBindError(f"bind agent {agent_id!r}: {exc}") from exc
+    _set_extras(registry.context, {_EXTRAS_BIND_STATE: state})
+    return bound
+
+
+def restore_active_agent(
+    registry: ComponentRegistry,
+    state: dict,
+    *,
+    pool: McpPool | None = None,
+    graph_store=None,
+) -> dict:
+    """Undo the bind that ``state`` recorded: the shared state the document
+    mutated goes back to its pre-bind snapshot (persona path, MCP adapters,
+    model, loop slot + active graph, settings slots), in the REVERSE of the
+    bind order.
+
+    Best-effort per step: a restore target may be gone by the time its agent
+    is deleted (the pre-bind active graph can have cascaded away with it),
+    and that step is skipped — but the bind-state record and the MCP
+    bookkeeping are ALWAYS cleared, so no ghost state survives. Idempotent:
+    a second call is a no-op. Returns what was restored (API + tests).
+    """
+    if not state:
+        return {}
+    context = registry.context
+    prev = state.get("prev") or {}
+    restored = {"persona": None, "mcp": [], "model": False, "loop": None, "settings": {}}
+
+    # 1. persona — the pre-bind agent_path (pre-snapshot states carried it as
+    #    prev_agent_path; both shapes are read here)
+    agent_path = prev.get("agent_path")
+    if agent_path is None:
+        agent_path = state.get("prev_agent_path")
+    if agent_path and context.config is not None:
+        context.config.agent_path = agent_path
+        restored["persona"] = agent_path
+    _set_extras(context, {_EXTRAS_PERSONA_PATH: None})
+
+    # 2. mcp — unmerge the adapters, drop the pooled connections
+    bound_mcp = _extras(context).get(_EXTRAS_MCP) or {}
+    if bound_mcp and context.tools is not None:
+        for _alias, names in bound_mcp.items():
+            for name in names:
+                context.tools.unregister(name)
+        for alias in bound_mcp:
+            (pool or get_mcp_pool()).reset(alias)
+        restored["mcp"] = list(bound_mcp)
+    _set_extras(context, {_EXTRAS_MCP: {}})
+
+    # 3. model — the pre-bind provider back, with the LLM-capturing slots
+    #    rebuilt against it (a plain re-activate would keep the stale instance)
+    prev_llm = prev.get("llm")
+    if prev_llm is not None:
+        context.llm = prev_llm
+        for slot in _LLM_SLOTS:
+            try:
+                registry.rebuild(slot)
+            except ComponentNotRegisteredError:
+                pass
+        restored["model"] = True
+
+    # 4. loop — the pre-bind slot alias + the graph store's active id
+    loop = prev.get("loop") or {}
+    if loop.get("alias"):
+        try:
+            registry.activate(ComponentSlot.LOOP, loop["alias"])
+            restored["loop"] = loop["alias"]
+        except ComponentAliasError:
+            pass  # the pre-bind alias was unregistered since — nothing to restore to
+    gs = graph_store or _graph_store_for(registry)
+    if loop.get("graph_active") is not None:
+        try:
+            gs.set_active(loop["graph_active"])
+        except (KeyError, ValueError):
+            pass  # the pre-bind active graph was deleted (its cascade) — expected
+    elif gs.active_id is not None:
+        # the pre-bind state had NO active graph: the agent's loop (often its
+        # OWNED one, cascaded with the agent) must not keep the pointer —
+        # set_active can only point at existing graphs, so clear instead
+        gs.clear_active()
+
+    # 5. settings — the pre-bind slot aliases
+    for slot_name, alias in (prev.get("settings") or {}).items():
+        try:
+            registry.activate(ComponentSlot(slot_name), alias)
+            restored["settings"][slot_name] = alias
+        except (ComponentAliasError, ValueError):
+            pass  # unregistered since the bind — visible in describe(), not fatal here
+
+    _set_extras(context, {_EXTRAS_BIND_STATE: None})
+    return restored
+
+
+def detach_agent(registry: ComponentRegistry, agent_id: str, *, pool: McpPool | None = None, graph_store=None) -> bool:
+    """Roll the bound agent's effects on the shared state back, but ONLY when
+    the bound agent is exactly ``agent_id`` (the delete route's door).
+
+    Deleting an agent that is not the bound one (or deleting with nothing
+    bound) changes no runtime state — ``False`` is returned and the bind
+    record survives. This is what keeps the reported failure closed:
+    activate → run → delete must leave the next turn on the pre-bind
+    pipeline, never on the deleted agent's loop/model/tools/persona.
+    """
+    state = _extras(registry.context).get(_EXTRAS_BIND_STATE)
+    if not state or state.get("agent") != agent_id:
+        return False
+    restore_active_agent(registry, state, pool=pool, graph_store=graph_store)
+    return True
+
+
 def ensure_agent_bound(registry: ComponentRegistry, *, pool: McpPool | None = None) -> dict | None:
     """Bind the store's ACTIVE agent (if any) onto ``registry`` — idempotent.
 
@@ -366,8 +554,11 @@ def ensure_agent_bound(registry: ComponentRegistry, *, pool: McpPool | None = No
     The bind lands on THIS turn's snapshot (built after it), so activation
     always lands on the next turn exactly like a slot swap.
 
-    When the active agent disappears (delete), the pre-bind ``agent_path``
-    is restored — the default persona comes back, no stale persona lingers.
+    When the active agent disappears (delete), the FULL pre-bind snapshot is
+    restored (loop slot + active graph, model, MCP adapters, settings,
+    persona) via :func:`restore_active_agent` — the delete route runs the
+    same detach immediately for the UI flow, and this covers every other
+    path. A deleted agent never keeps running the next turn.
     """
     from .agent_store import get_agent_store
 
@@ -378,36 +569,19 @@ def ensure_agent_bound(registry: ComponentRegistry, *, pool: McpPool | None = No
 
     if active is None:
         if state:
-            prev_path = state.get("prev_agent_path")
-            if prev_path and context.config is not None:
-                context.config.agent_path = prev_path
-        _set_extras(context, {_EXTRAS_BIND_STATE: None})
+            detach_agent(registry, state.get("agent"), pool=pool)
         return None
 
     doc = store.get(active)
     signature = _doc_signature(active, doc)
     if state and state.get("agent") == active and state.get("signature") == signature:
         return None  # same document, same agent — already bound
-
-    prev_path = (state or {}).get("prev_agent_path")
-    if prev_path is None and state is None and context.config is not None:
-        prev_path = context.config.agent_path  # first bind: remember the default
-    try:
-        bound = bind_agent(
-            registry,
-            doc,
-            agent_id=active,
-            pool=pool,
-            persona_dir=store.directory,
-            skill_root=getattr(store, "skill_root", None),
-            graph_store=_graph_store_for(registry),
-        )
-    except AgentBindError:
-        raise
-    except Exception as exc:  # a seam failure is still a VISIBLE bind failure
-        raise AgentBindError(f"bind agent {active!r}: {exc}") from exc
-    _set_extras(
-        context,
-        {_EXTRAS_BIND_STATE: {"agent": active, "signature": signature, "prev_agent_path": prev_path}},
+    return bind_and_remember(
+        registry,
+        doc,
+        agent_id=active,
+        pool=pool,
+        persona_dir=store.directory,
+        skill_root=getattr(store, "skill_root", None),
+        graph_store=_graph_store_for(registry),
     )
-    return bound

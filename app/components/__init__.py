@@ -14,9 +14,12 @@ let a whole configuration be swapped in one call.
 from .agent_bind import (
     AgentBindError,
     bind_agent,
+    bind_and_remember,
+    detach_agent,
     ensure_agent_bound,
     get_mcp_pool,
     reset_mcp_pool,
+    restore_active_agent,
 )
 from .builtin import (
     COMPONENT_ALIASES,
@@ -58,11 +61,14 @@ __all__ = [
     "StaticRegistry",
     "apply_manifest",
     "bind_agent",
+    "bind_and_remember",
+    "detach_agent",
     "ensure_agent_bound",
     "get_mcp_pool",
     "load_manifest",
-    "reset_mcp_pool",
     "register_agent_components",
     "register_builtin_components",
     "register_graph_components",
+    "reset_mcp_pool",
+    "restore_active_agent",
 ]

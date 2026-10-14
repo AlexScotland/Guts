@@ -190,6 +190,15 @@ class GraphStore:
             self._active_id = graph_id
             self._persist_active()
 
+    def clear_active(self):
+        """Drop the active id (no active graph) — the inverse of
+        :meth:`set_active` for restores where the pre-bind state had none
+        (a bind's loop was the active graph, and it is gone with its agent)."""
+        with self._lock:
+            if self._active_id is not None:
+                self._active_id = None
+                self._persist_active()
+
     # ── introspection ────────────────────────────────────────────
 
     def list_meta(self) -> list[dict]:

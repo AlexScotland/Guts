@@ -21,7 +21,11 @@ fakes only (the repo's frozen rule):
   * persona: materialized to a file + ``agent_path`` pointed at it — the
     read path (AgentRuntime) is untouched;
   * the lazy hook (ensure_agent_bound): the signature check makes a
-    no-op re-bind a no-op, and deactivation restores the default persona.
+    no-op re-bind a no-op, and deactivation restores the default persona;
+  * detach (the delete path): ``bind_and_remember`` records the pre-bind
+    shared-state snapshot, and ``detach_agent`` (only when THAT agent is the
+    bound one) rolls loop slot + active graph, model, MCP adapters, settings
+    and persona back — a deleted agent never keeps running the next turn.
 
 Run from the ``app/`` directory:
     PYTHONPATH=.pydeps python3 -m pytest tests/test_agent_bind.py -v
@@ -39,6 +43,8 @@ from components import (
     ComponentRegistry,
     ComponentSlot,
     bind_agent,
+    bind_and_remember,
+    detach_agent,
     ensure_agent_bound,
     register_builtin_components,
     register_graph_components,
@@ -445,4 +451,82 @@ def test_ensure_agent_bound_failure_is_visible(harness, monkeypatch):
     pool = McpPool(factory=FakeUnreachable())
     with pytest.raises(AgentBindError, match="bind mcp\\[web\\]"):
         agent_bind.ensure_agent_bound(registry, pool=pool)
+    pool.drain()
+
+
+# ── detach (the delete path: roll the shared state back) ─────────────────────
+
+
+def test_detach_restores_the_full_pre_bind_state(harness):
+    """The delete path's pin: deleting the bound agent returns EVERY shared
+    seam the bind mutated — loop slot + active graph, model (+ rebuild), MCP
+    adapters, settings aliases, persona — to its pre-bind value."""
+    registry, context, tools, graphs = (
+        harness["registry"], harness["context"], harness["tools"], harness["graphs"],
+    )
+    pool = harness["pool"]()
+    default_llm = context.llm
+    default_agent_path = context.config.agent_path
+    doc = {
+        "prompt": "You are a research specialist. Cite sources.",
+        "loop": {"ref": "killer-research"},
+        "model": {"provider": "ollama", "id": "qwen:latest"},
+        "mcp": [{"alias": "web", "transport": "http", "url": "http://fake"}],
+        "skill": [{"path": "citation.md"}],
+        "settings": {"memory": "trimmed"},
+    }
+    bind_and_remember(
+        registry,
+        doc,
+        agent_id="researcher",
+        pool=pool,
+        model_factory=lambda spec: FakeModel(spec.get("id")),
+        skill_root=harness["root"],
+        persona_dir=os.path.join(harness["root"], "persona"),
+    )
+    # the bind landed on every shared seam (the bug being fixed)
+    assert registry.active_alias(ComponentSlot.LOOP) == "graph"
+    assert graphs.active_id == "killer-research"
+    assert context.llm is not default_llm
+    assert "mcp_web_echo" in tools.names()
+    assert registry.active_alias(ComponentSlot.MEMORY) == "trimmed"
+    assert context.config.agent_path.endswith("researcher.persona.md")
+
+    # delete it: every seam rolls back to the pre-bind pipeline
+    assert detach_agent(registry, "researcher", pool=pool, graph_store=graphs) is True
+    assert registry.active_alias(ComponentSlot.LOOP) == "plan_execute"  # pre-bind alias
+    assert graphs.active_id is None  # pre-bind active graph
+    assert context.llm is default_llm
+    assert registry.active(ComponentSlot.EXECUTOR).llm is default_llm  # rebuilt
+    assert "mcp_web_echo" not in tools.names()
+    assert registry.active_alias(ComponentSlot.MEMORY) == "default"  # pre-bind alias
+    assert context.config.agent_path == default_agent_path
+    # idempotent: nothing left to roll back
+    assert detach_agent(registry, "researcher", pool=pool, graph_store=graphs) is False
+    pool.drain()
+
+
+def test_detach_only_rolls_back_the_bound_agent(harness):
+    """Deleting an agent that is NOT the bound one must change no runtime
+    state — and the bound agent's own deletion still restores."""
+    registry, context = harness["registry"], harness["context"]
+    pool = harness["pool"]()
+    default_llm = context.llm
+    bind_and_remember(
+        registry,
+        {"loop": {"alias": "direct"}, "model": {"provider": "ollama", "id": "qwen:latest"}},
+        agent_id="keeper",
+        pool=pool,
+        model_factory=lambda spec: FakeModel(spec.get("id")),
+    )
+    assert context.llm is not default_llm
+    assert registry.active_alias(ComponentSlot.LOOP) == "direct"
+
+    assert detach_agent(registry, "someone-else", pool=pool) is False
+    assert context.llm is not default_llm  # untouched
+    assert registry.active_alias(ComponentSlot.LOOP) == "direct"
+
+    assert detach_agent(registry, "keeper", pool=pool) is True
+    assert context.llm is default_llm
+    assert registry.active_alias(ComponentSlot.LOOP) == "plan_execute"
     pool.drain()

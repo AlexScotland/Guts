@@ -282,6 +282,67 @@ def test_delete_active_agent_clears_active(agent_client):
     assert store.active_id is None
 
 
+def test_delete_active_agent_restores_the_bound_pipeline(agent_client):
+    """The UI flow the delete door must close: activate the agent, the bind
+    lands on the shared seams, then DELETE the agent node — the next turn
+    must run the PRE-activation pipeline, never the deleted agent's loop /
+    model / settings / persona (a deleted agent never keeps running)."""
+    from components import ComponentSlot
+
+    client, store = agent_client
+    registry = client.app.state.registry
+    context = client.app.state.context
+    graphs = client.app.state.graphs
+    client.post("/api/agents", json={"id": "a", "agent": _valid_agent(mcp=[])})
+
+    default_llm = context.llm
+    default_agent_path = context.config.agent_path
+    assert registry.active_alias(ComponentSlot.LOOP) == "plan_execute"
+    assert registry.active_alias(ComponentSlot.MEMORY) == "default"
+    assert graphs.active_id is None
+
+    # activate: the bind lands on every shared seam
+    assert client.post("/api/agents/a/activate").status_code == 200
+    assert registry.active_alias(ComponentSlot.LOOP) == "graph"
+    assert graphs.active_id == "killer-research"
+    assert context.llm is not default_llm
+    assert registry.active_alias(ComponentSlot.MEMORY) == "trimmed"
+    assert context.config.agent_path.endswith("a.persona.md")
+
+    # delete the agent node: every seam rolls back
+    res = client.delete("/api/agents/a")
+    assert res.status_code == 200
+    assert res.json()["active"] is None
+    assert store.active_id is None
+    assert registry.active_alias(ComponentSlot.LOOP) == "plan_execute"
+    assert graphs.active_id is None
+    assert context.llm is default_llm
+    assert registry.active(ComponentSlot.EXECUTOR).llm is default_llm  # rebuilt
+    assert registry.active_alias(ComponentSlot.MEMORY) == "default"
+    assert context.config.agent_path == default_agent_path
+
+
+def test_delete_unbound_agent_changes_no_runtime_state(agent_client):
+    """Deleting an agent that is not the bound one (or with nothing bound)
+    must leave the shared seams exactly where they are."""
+    from components import ComponentSlot
+
+    client, store = agent_client
+    registry = client.app.state.registry
+    context = client.app.state.context
+    # agent a is bound; agent b is just saved
+    client.post("/api/agents", json={"id": "a", "agent": _valid_agent(mcp=[])})
+    client.post("/api/agents", json={"id": "b", "agent": _valid_agent(mcp=[])})
+    assert client.post("/api/agents/a/activate").status_code == 200
+    assert registry.active_alias(ComponentSlot.LOOP) == "graph"
+
+    res = client.delete("/api/agents/b")
+    assert res.status_code == 200
+    assert client.get("/api/agents").json()["active"] == "a"  # a still active+bound
+    assert registry.active_alias(ComponentSlot.LOOP) == "graph"
+    assert context.config.agent_path.endswith("a.persona.md")
+
+
 def test_activate_binds_loop_settings_model_and_persona(agent_client):
     """Bind-then-run (the doc's activation group): activation is where the
     document lands on the live seams — loop ref, settings alias, the model

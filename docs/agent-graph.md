@@ -14,7 +14,10 @@ loop slot naming the canvas's own graph, the inspector builds the loop
 **inline** over the canvas's shared working state (nodes, wires, the repeat),
 the card shows the loop as a live preview; on the backend the graph store
 carries loop `owner`, `POST /api/agents/{id}/loop` builds the agent's private
-loop (ref can never dangle), and deleting the agent cascades its owned loops.
+loop (ref can never dangle), and deleting the agent cascades its owned loops,
+**and the delete path** — deleting the BOUND agent rolls the shared pipeline
+back to its pre-bind snapshot (loop slot + active graph, model, MCP adapters,
+settings, persona) so a deleted agent never keeps running the next turn.
 Build order 1–9 is complete; this document stays the source of truth for v1 —
 and names what comes next (the nested/routed reading) as the roadmap.
 **Date:** 2026-10-13 — Supersedes: the "agent groups" note in
@@ -307,7 +310,7 @@ closed). The seams, all in `components/graph_store.py` + `server.py`:
 |---|---|
 | `POST /api/agents/{id}/loop` | **builds the agent's private loop**: saves a loop doc (a supplied validated graph, or the `DEFAULT_LOOP_SEED` one-node starting point) with `owner` **stamped by the door**, and points the agent's `loop.ref` at it in the same action — created together ⇒ the ref can **never dangle**. Idempotent 1:1 — reuse the agent's existing owned loop; a second one is never created. A loop `owner` that is not the agent's (or not omitted) ⇒ 400. |
 | `GET /api/graphs` | the loop lists with its `owner` (or `null` = shared). |
-| `DELETE /api/agents/{id}` | the agent's **owned** loops cascade away (no private loop left dangling after its agent); a loop the agent merely **referenced** (shared, no owner) **survives** — a reference does not own. |
+| `DELETE /api/agents/{id}` | the agent's **owned** loops cascade away (no private loop left dangling after its agent); a loop the agent merely **referenced** (shared, no owner) **survives** — a reference does not own. **AND** when this agent is the BOUND one, the bind is detached: the shared seams it mutated (loop slot + active graph, model, MCP adapters, settings slots, persona path) are restored to the pre-bind snapshot (the detach runs before the cascade, so a pre-bind active graph is restored while it still exists and the cascade then clears it). Deleting an agent that is NOT the bound one changes no runtime state. |
 
 Activation is unchanged: bind-then-run resolves the ref to the agent's owned
 loop and runs it through the EXISTING `graph` slot (pinned by
@@ -332,6 +335,14 @@ builder only opens in the first case.
   `owner` is a 400 (never saved, the agent untouched); an owned loop never
   outlives its agent (the delete cascades it), and a shared loop never dies
   with a referencer — ownership is a lifecycle, enforced at the store.
+- **Delete time:** deleting the bound agent is a VISIBLE rollback, not a
+  silent one: every shared seam the bind mutated goes back to its pre-bind
+  value (`bind_and_remember` captures the snapshot at bind;
+  `detach_agent` / `restore_active_agent` restore it — loop slot +
+  active graph, model + rebuild, MCP adapters + pool reset, settings,
+  persona). The lazy per-turn hook covers every path that doesn't go
+  through the delete route; a deleted agent never keeps running the
+  next turn.
 
 ## Out of scope (named, NOT built)
 

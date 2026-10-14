@@ -373,17 +373,28 @@ def get_agent(agent_id: str):
 
 @app.delete("/api/agents/{agent_id}")
 def delete_agent(agent_id: str):
-    """Delete a saved agent document (the bind it produced, if any, is
-    dropped with it — activation is the only live effect, and the hot path
-    re-resolves per turn).
+    """Delete a saved agent document — AND roll its live bind back.
+
+    A bind mutates process-shared state (the registry's loop slot + the
+    graph store's active id, ``context.llm``, the MCP adapters in the shared
+    ToolRegistry, the settings slots, the persona path). When THIS agent is
+    the bound one, :func:`detach_agent` restores exactly the pre-bind
+    snapshot, so the next turn runs the pre-bind pipeline — a deleted agent
+    never keeps running. Deleting an agent that is NOT the bound one
+    changes no runtime state.
 
     Owned loops cascade: every loop the agent OWNS (a graph with
     ``owner == agent_id`` — its PRIVATE loop) is removed with it, so no
     private loop is ever left dangling after its agent disappears. A loop
-    the agent merely REFERENCED (a shared graph, no owner) survives."""
+    the agent merely REFERENCED (a shared graph, no owner) survives. The
+    detach runs BEFORE the cascade: the pre-bind active graph is restored
+    while it still exists, and the cascade clears it on the way out."""
     agent_store = get_agent_store()
     if not agent_store.delete(agent_id):
         raise HTTPException(status_code=404, detail=f"unknown agent {agent_id!r}")
+    from components.agent_bind import detach_agent
+
+    detach_agent(get_registry(), agent_id, graph_store=get_graph_store())
     get_graph_store().delete_owned_by(agent_id)
     return describe_agents(agent_store)
 
@@ -466,9 +477,9 @@ def activate_agent(agent_id: str):
     except (KeyError, AgentError) as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     try:
-        from components.agent_bind import AgentBindError, bind_agent
+        from components.agent_bind import AgentBindError, bind_and_remember
 
-        bind_agent(
+        bind_and_remember(
             get_registry(),
             doc,
             agent_id=agent_id,
