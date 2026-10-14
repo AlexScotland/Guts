@@ -101,6 +101,13 @@ v0, so the pinned determinism tests hold. Full contract:
 canvas UI (it *is* the later product, separate project), human-in-loop gate,
 multi-goal graphs, per-run artifacts/DB persistence beyond JSON files.
 
+**Layer above (not part of the turn-graph contract):** an **agent graph** —
+a sibling *capability-composition document* (persona + model + MCP + skills
++ exactly one `loop` child, the turn-graph) bound to the context at turn
+start and then run unchanged. It is a *document, not a node* of this
+vocabulary, so the 9-primitive dataflow contract stays closed:
+[agent-graph.md](agent-graph.md).
+
 ## v1 (lands on the same seams, no new transport)
 
 **Live run status (the "future canvas seam", realized):**

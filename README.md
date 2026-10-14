@@ -211,6 +211,10 @@ docs/         the tutorial + the design docs; the graph contract and its
                ai-routing-nodes.md     (v1: route — the 9th primitive)
                ai-per-node-outputs.md  (v2: node outputs on the event seam)
                hot-swap-components.md  (slots/aliases/presets)
+               agent-graph.md          (layer above: the agent as a
+                                       capability-composition doc — model +
+                                       MCP + skills + exactly one loop;
+                                       design, not yet built)
 ```
 
 ## Design principles

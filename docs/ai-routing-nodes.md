@@ -174,9 +174,17 @@ dual-output pattern in the contract).
 
 ## Out of scope for this branch
 
-- **Agent groups** (specialist loops with their own system prompt + inner
-  flow, serial handoff) — the *next* branch; `route` is its dispatcher.
-  `route` is shippable standalone against today's primitives.
+- **Agent groups** — refined and split into two readings (2026-10-13).
+  **v1 = the capability-composition (bind-then-run) agent graph**: an agent
+  is a second, sibling *document* (model + MCP + skills + persona + exactly
+  one `loop` child, the turn-graph) bound to the context at turn start and
+  then run **unchanged** — one loop per agent. This is the near-term
+  **chosen** approach, now spec'd: [agent-graph.md](agent-graph.md).
+  **Deferred = the nested/routed reading**: the agent graph sequencing or
+  fanning out *multiple* sub-graphs with `route` as the inter-agent
+  dispatcher (serial handoff) — the larger contract extension, named not
+  built (see agent-graph.md §Out of scope). `route` remains shippable
+  standalone against today's primitives either way.
 - **Parallel side-effecting agents** — shelved; the v0 invariant
   (conversation commits stay serial; `act` barred from parallel branches)
   is load-bearing and stays put.
