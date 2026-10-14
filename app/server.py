@@ -39,6 +39,7 @@ from typing import Literal
 from components import ComponentSlot
 from components.graph_store import GraphError, describe_graphs, get_graph_store
 from components.agent_store import AgentError, describe_agents, get_agent_store
+from schemas.agent import validate_agent
 from components.primitives.base import describe_error
 from main import build_agent, get_registry
 
@@ -101,6 +102,20 @@ class ChatRequest(BaseModel):
     conversation: list[ConversationTurn] = Field(
         default_factory=list,
         description="Prior conversation turns (oldest first), owned by the frontend.",
+    )
+    # The full configuration for this turn — the stateless v2 agent document
+    # (app/docs/agent-graph.md §1): persona + model + mcp[] + skill[] +
+    # settings + loop (alias | inline graph). Absent = process defaults,
+    # exactly as today. Validated against the closed-vocabulary contract at
+    # this edge (AgentError → 400) before anything runs — an invalid document
+    # never starts a half-bound turn; request-scoped binding lands in the
+    # acceptance phase (build order §10.2).
+    agent: dict | None = Field(
+        default=None,
+        description=(
+            "Optional agent document for this turn (persona, model, mcp, "
+            "skill, settings, loop). Absent = defaults."
+        ),
     )
 
 
@@ -536,7 +551,19 @@ def chat(req: ChatRequest):
     requests while a turn is in flight — including the
     ``GET /api/graphs/{id}/last-run`` live-record polls and any concurrent
     turn. An ``async def`` here would freeze the loop for the entire turn.
+
+    Phase-1 posture (the stateless v2 contract, app/docs/agent-graph.md):
+    a present ``agent`` document is validated at THIS EDGE — a violation is
+    a 400 with the validator's path-qualified message, and the turn never
+    starts (visible failure, exactly like the save door); request-scoped
+    binding of the document lands in the acceptance phase. Absent → the
+    default pipeline, unchanged.
     """
+    if req.agent is not None:
+        try:
+            validate_agent(req.agent)
+        except AgentError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
     try:
         history = [
             HumanMessage(content=turn.content) if turn.role == "user"

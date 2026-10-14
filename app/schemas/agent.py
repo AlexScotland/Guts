@@ -2,20 +2,33 @@
 stdlib-only, a sibling of schemas/graph.py.
 
 An **agent** is a *capability-composition document*: persona + model + MCP
-servers + skills + slot settings + exactly one ``loop`` child (a saved
-turn-graph ``ref``, or a built-in loop ``alias``). The agent graph is a
-**document, not a node** of the turn vocabulary — the 9-primitive dataflow
-contract stays closed. At bind time the document is resolved onto the
-existing slot/turn-graph seams (``bind``-then-``run``), and the turn runs
-unchanged; this module only validates the document, exactly like
-``validate_graph``.
+servers + skills + slot settings + exactly one ``loop`` child. The loop is
+exactly one of:
+
+  * ``ref``   — a saved turn-graph id (transitional; needs the known-ids
+                seam at the save site);
+  * ``alias`` — a built-in loop alias;
+  * ``graph`` — an INLINE turn-graph document, validated with the same
+                ``validate_graph`` contract (the stateless v2 path: the
+                document travels in the request, nothing is stored).
+
+The agent graph is a **document, not a node** of the turn vocabulary — the
+9-primitive dataflow contract stays closed. At bind time the document is
+resolved onto the existing slot/turn-graph seams (``bind``-then-``run``),
+and the turn runs unchanged; this module only validates the document,
+exactly like ``validate_graph``.
+
+``skill[]`` entries carry exactly one of ``text`` (an inline persona
+fragment — the stateless v2 path) or ``path`` (a readable file under the
+skill root), plus optional declared ``tools``.
 
 Like ``GraphError``, failures are ``AgentError(ValueError)`` with a
 human-readable path, raised at the FIRST violation. Purity is a frozen
-rule: no app imports; the two seams that need the outside world
-(``loop.ref`` must name a saved graph; ``skill.path`` must exist under a
-root) are injected callables/roots at the save site (``agent_store``)
-instead of imported here.
+rule: no app imports; the seams that need the outside world (``loop.ref``
+must name a saved graph; ``skill.path`` must exist under a root) are
+injected callables/roots at the save site (``agent_store``) instead of
+imported here. Importing the sibling ``schemas.graph`` validator is the
+one inter-module dependency — both modules are pure/stdlib.
 """
 from __future__ import annotations
 
@@ -24,6 +37,8 @@ import os
 import re
 from dataclasses import dataclass
 from typing import Any
+
+from .graph import GraphError, validate_graph
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
@@ -56,11 +71,14 @@ class AgentError(ValueError):
 
 @dataclass
 class LoopSpec:
-    """The one required child: either ``ref`` (a saved graph id) or
-    ``alias`` (a built-in loop alias) — never both, never neither."""
+    """The one required child: exactly one of ``ref`` (a saved graph id —
+    transitional), ``alias`` (a built-in loop alias), or ``graph`` (an
+    inline, already-validated turn-graph document — the stateless v2
+    path). Never two, never neither."""
 
     ref: str | None
     alias: str | None
+    graph: dict | None = None
 
 
 @dataclass
@@ -74,8 +92,9 @@ class McpSpec:
 
 @dataclass
 class SkillSpec:
-    path: str
-    tools: tuple | None        # declared bundled tool names (checked at bind)
+    path: str | None           # XOR with text (exactly one of the two)
+    text: str | None = None    # inline persona fragment (the stateless v2 path)
+    tools: tuple | None = None  # declared bundled tool names (checked at bind)
 
 
 @dataclass
@@ -131,23 +150,43 @@ def _reject_unknown_keys(obj: dict, allowed: tuple[str, ...], label: str):
 def _validate_loop(raw: Any) -> LoopSpec:
     if not isinstance(raw, dict):
         raise AgentError(f"loop: must be a JSON object; got {type(raw).__name__}")
-    _reject_unknown_keys(raw, ("ref", "alias"), "loop")
-    ref, alias = raw.get("ref"), raw.get("alias")
-    if (ref is None) == (alias is None):
-        if ref is not None and alias is not None:
-            raise AgentError("loop: provide exactly one of 'ref' (a saved graph id) or 'alias' — not both")
+    _reject_unknown_keys(raw, ("ref", "alias", "graph"), "loop")
+    ref, alias, graph = raw.get("ref"), raw.get("alias"), raw.get("graph")
+    present = [
+        name
+        for name, value in (("ref", ref), ("alias", alias), ("graph", graph))
+        if value is not None
+    ]
+    if len(present) > 1:
+        raise AgentError(
+            "loop: provide exactly one of 'ref' (a saved graph id), "
+            "'alias' (a built-in loop), or 'graph' (an inline graph document) — "
+            f"not {', '.join(repr(name) for name in present)}"
+        )
+    if len(present) == 0:
         raise AgentError(
             "loop: an agent with no loop can't run a turn — provide "
-            f"'ref' (a saved graph id) or 'alias' (one of: {', '.join(KNOWN_LOOP_ALIASES)})"
+            "'ref' (a saved graph id), 'alias' (one of: "
+            f"{', '.join(KNOWN_LOOP_ALIASES)}), or 'graph' (an inline graph document)"
         )
     if ref is not None:
-        return LoopSpec(ref=_validate_id(ref, "loop.ref"), alias=None)
-    if alias not in KNOWN_LOOP_ALIASES:
-        raise AgentError(
-            f"loop.alias: must be one of {', '.join(KNOWN_LOOP_ALIASES)}; got {alias!r} "
-            "(a saved graph is reached via loop.ref)"
-        )
-    return LoopSpec(ref=None, alias=alias)
+        return LoopSpec(ref=_validate_id(ref, "loop.ref"), alias=None, graph=None)
+    if alias is not None:
+        if alias not in KNOWN_LOOP_ALIASES:
+            raise AgentError(
+                f"loop.alias: must be one of {', '.join(KNOWN_LOOP_ALIASES)}; got {alias!r} "
+                "(a saved graph is reached via loop.ref, an inline one via loop.graph)"
+            )
+        return LoopSpec(ref=None, alias=alias, graph=None)
+    # ``graph`` — the stateless v2 path: the inline document is validated with
+    # the same closed-vocabulary graph contract as a saved one. GraphError is
+    # re-raised as AgentError so this module keeps its single error type
+    # (both are ValueErrors, but AgentError keeps the message path-qualified).
+    try:
+        validate_graph(graph)
+    except GraphError as exc:
+        raise AgentError(f"loop.graph: {exc}") from exc
+    return LoopSpec(ref=None, alias=None, graph=graph)
 
 
 def _validate_mcp(raw: Any, index: int) -> McpSpec:
@@ -191,20 +230,38 @@ def _validate_skill(raw: Any, index: int, skill_root: str | None) -> SkillSpec:
     label = f"skill[{index}]"
     if not isinstance(raw, dict):
         raise AgentError(f"{label}: must be a JSON object; got {type(raw).__name__}")
-    _reject_unknown_keys(raw, ("path", "tools"), label)
-    path = _validate_nonempty_str(raw.get("path"), f"{label}.path")
-    if skill_root is not None:
-        root = os.path.realpath(skill_root)
-        target = os.path.realpath(os.path.join(root, path))
-        if not target.startswith(root + os.sep):
-            raise AgentError(f"{label}.path: must stay under the skill root; got {path!r}")
-        if not os.path.isfile(target):
-            raise AgentError(f"{label}.path: no such file {path!r} under the skill root")
-        try:
-            with open(target, encoding="utf-8") as fh:
-                fh.read()
-        except (OSError, UnicodeDecodeError) as exc:
-            raise AgentError(f"{label}.path: {path!r} must be a readable text file: {exc}") from exc
+    _reject_unknown_keys(raw, ("path", "text", "tools"), label)
+    path_raw, text_raw = raw.get("path"), raw.get("text")
+    if (path_raw is None) == (text_raw is None):
+        if path_raw is not None and text_raw is not None:
+            raise AgentError(
+                f"{label}: provide exactly one of 'text' (an inline persona fragment) "
+                "or 'path' (a skill file) — not both"
+            )
+        raise AgentError(
+            f"{label}: provide exactly one of 'text' (an inline persona fragment) "
+            "or 'path' (a skill file)"
+        )
+    path = None
+    text = None
+    if path_raw is not None:
+        path = _validate_nonempty_str(path_raw, f"{label}.path")
+        if skill_root is not None:
+            root = os.path.realpath(skill_root)
+            target = os.path.realpath(os.path.join(root, path))
+            if not target.startswith(root + os.sep):
+                raise AgentError(f"{label}.path: must stay under the skill root; got {path!r}")
+            if not os.path.isfile(target):
+                raise AgentError(f"{label}.path: no such file {path!r} under the skill root")
+            try:
+                with open(target, encoding="utf-8") as fh:
+                    fh.read()
+            except (OSError, UnicodeDecodeError) as exc:
+                raise AgentError(f"{label}.path: {path!r} must be a readable text file: {exc}") from exc
+    else:
+        # Inline fragment (the stateless v2 path): a non-empty persona
+        # snippet composed into the turn's leading system message at bind.
+        text = _validate_nonempty_str(text_raw, f"{label}.text")
     tools = None
     if raw.get("tools") is not None:
         declared = raw["tools"]
@@ -215,7 +272,7 @@ def _validate_skill(raw: Any, index: int, skill_root: str | None) -> SkillSpec:
                 f"{label}.tools: must be a non-empty list of tool names; got {declared!r}"
             )
         tools = tuple(declared)
-    return SkillSpec(path=path, tools=tools)
+    return SkillSpec(path=path, text=text, tools=tools)
 
 
 def _validate_model(raw: Any) -> ModelSpec:
@@ -272,6 +329,10 @@ def validate_agent(
       when omitted (pure mode) only the id *shape* is checked.
     * ``skill_root`` — when given, every ``skill.path`` must exist under it
       as a readable text file; when omitted only the shape is checked.
+
+    ``loop.graph`` (the stateless v2 path) is fully validated here, with the
+    sibling ``schemas.graph.validate_graph`` contract — no seam needed, the
+    document is self-contained in the request.
     """
     if not isinstance(data, dict):
         raise AgentError("an agent must be a JSON object at the top level")
@@ -302,7 +363,8 @@ def validate_agent(
     if "loop" not in data or data["loop"] is None:
         raise AgentError(
             "loop: an agent with no loop can't run a turn — 'loop' is required "
-            "(either {ref: <saved graph id>} or {alias: <loop alias>})"
+            "(one of {ref: <saved graph id>}, {alias: <loop alias>}, "
+            "{graph: <inline graph document>})"
         )
     loop = _validate_loop(data["loop"])
     if loop.ref is not None and known_graph_ids is not None and loop.ref not in known_graph_ids:

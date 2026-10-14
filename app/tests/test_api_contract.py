@@ -104,6 +104,82 @@ def test_chat_rejects_empty_message(recording_agent):
     assert res.status_code in (400, 422)
 
 
+# ── The agent document at the chat edge (stateless v2, Phase 1) ────────────
+
+
+def test_chat_agent_field_absent_is_defaults_path(recording_agent):
+    client, agent, _ = recording_agent
+    res = client.post("/api/chat", json={"message": "hello"})
+    assert res.status_code == 200
+    assert res.json() == {"answer": "echo-answer"}
+
+
+def test_chat_rejects_invalid_agent_document(recording_agent):
+    """An invalid ``agent`` document is a 400 at the edge, never a 500 —
+    path-qualified, and the turn never starts (visible failure)."""
+    client, agent, _ = recording_agent
+    res = client.post("/api/chat", json={
+        "message": "hello",
+        "agent": {"prompt": "x", "loop": {}},
+    })
+    assert res.status_code == 400
+    assert "no loop" in res.json()["detail"]
+    assert agent.calls == []  # the turn never ran
+
+
+def test_chat_rejects_agent_document_with_bad_inline_graph(recording_agent):
+    client, agent, _ = recording_agent
+    res = client.post("/api/chat", json={
+        "message": "hello",
+        "agent": {
+            "loop": {
+                "graph": {"nodes": {"x": {"primitive": "vibecoding"}}, "edges": []},
+            },
+        },
+    })
+    assert res.status_code == 400
+    detail = res.json()["detail"]
+    assert "loop.graph" in detail and "unknown primitive" in detail
+    assert agent.calls == []
+
+
+def test_chat_accepts_valid_agent_document_and_runs_defaults(recording_agent):
+    """Phase-1 posture: a VALID document is the contract's green path —
+    it is shape-checked and the default pipeline runs (request-scoped
+    binding lands in the acceptance phase, docs §10.2)."""
+    client, agent, _ = recording_agent
+    res = client.post("/api/chat", json={
+        "message": "hello",
+        "agent": {
+            "prompt": "Answer like a 5th-grade explainer.",
+            "skill": [{"text": "Prefer small, verifiable steps."}],
+            "loop": {
+                "graph": {
+                    "name": "inline loop",
+                    "nodes": {
+                        "seed": {"primitive": "prompt", "config": {"text": "Set the context."}},
+                    },
+                    "edges": [],
+                },
+            },
+        },
+    })
+    assert res.status_code == 200
+    assert res.json() == {"answer": "echo-answer"}
+    assert agent.calls and agent.calls[0][0] == "hello"
+
+
+def test_chat_rejects_agent_document_with_unknown_key(recording_agent):
+    client, agent, _ = recording_agent
+    res = client.post("/api/chat", json={
+        "message": "hi",
+        "agent": {"persona": "x", "loop": {"alias": "direct"}},
+    })
+    assert res.status_code == 400
+    assert "unknown key" in res.json()["detail"]
+    assert agent.calls == []
+
+
 def test_chat_returns_500_when_agent_raises(monkeypatch):
     def broken_factory():
         raise RuntimeError("boom")

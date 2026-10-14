@@ -1,17 +1,25 @@
-"""Contract tests for the agent-graph schema (v1, docs/agent-graph.md).
+"""Contract tests for the agent-graph schema (v2, app/docs/agent-graph.md).
 
-Pinned behaviors (the doc's "Validator rules" list, red -> green):
-  * exactly one ``loop`` — missing, or ambiguous (ref + alias), is rejected;
-    ``alias`` is a closed enum, ``ref`` can be resolution-checked;
+Pinned behaviors (the doc's pinned shape, red -> green):
+  * exactly one ``loop``, which is exactly one of:
+      - ``ref``   — a saved turn-graph id (transitional; resolution-checked
+        via the injected known-ids seam);
+      - ``alias`` — a built-in loop (closed enum);
+      - ``graph`` — an INLINE graph document, validated with the same
+        closed-vocabulary ``validate_graph`` contract (the stateless v2
+        path);
+    ambiguous (two or three set) or empty is rejected;
   * unknown top-level key (closed vocabulary, nothing routes silently);
   * ``mcp`` — alias uniqueness, closed transport enum, per-transport field
     pairing (stdio => command, sse/http => url; the other is a violation);
-  * ``skill.path`` — exists under the skill root, readable text (injected
-    root keeps the schema pure/stdlib);
+  * ``skill[]`` — each entry exactly one of ``text`` (inline persona
+    fragment) XOR ``path`` (readable text file under the injected skill
+    root), optional declared ``tools``;
   * ``settings`` keys are the six slot names;
   * ``model.provider`` is a closed enum (v1: ollama);
   * ``AgentError`` IS a ``ValueError`` — the save route maps it to a 400
-    exactly like ``GraphError``.
+    exactly like ``GraphError`` (a ``loop.graph`` violation is re-raised
+    as AgentError, path-qualified ``loop.graph: …``).
 
 No app runtime imports, no network, no real LLM: pure dict-in / error-out,
 fakes only (the repo's frozen rule).
@@ -156,6 +164,68 @@ def test_loop_ref_bad_id_shape_rejected():
         validate_agent(_valid(loop={"ref": "has space"}))
 
 
+# ── loop.graph (the stateless v2 path) ───────────────────────────────────────
+
+
+#: A minimal valid inline graph document (one entry, closed vocabulary) —
+#: the same shape as the server's DEFAULT_LOOP_SEED.
+MIN_GRAPH = {
+    "name": "inline loop",
+    "nodes": {"seed": {"primitive": "prompt", "config": {"text": "Set the context."}}},
+    "edges": [],
+}
+
+
+def test_loop_graph_inline_validates():
+    doc = validate_agent(_valid(loop={"graph": MIN_GRAPH}))
+    assert doc.loop.ref is None and doc.loop.alias is None
+    assert doc.loop.graph == MIN_GRAPH
+
+
+def test_loop_graph_with_full_agent_document():
+    doc = validate_agent(_valid(
+        prompt="Answer like a 5th-grade explainer.",
+        skill=[{"text": "Prefer small, verifiable steps."}],
+        loop={"graph": MIN_GRAPH},
+    ))
+    assert doc.loop.graph == MIN_GRAPH
+    assert doc.skill[0].text == "Prefer small, verifiable steps."
+
+
+def test_loop_graph_invalid_document_rejected():
+    # The same closed-vocabulary contract as a saved graph: a violation is
+    # re-raised as AgentError, path-qualified through the loop edge.
+    bad = {"nodes": {"x": {"primitive": "vibecoding"}}, "edges": []}
+    with pytest.raises(AgentError, match="loop.graph.*unknown primitive"):
+        validate_agent(_valid(loop={"graph": bad}))
+
+
+def test_loop_graph_not_a_dict_rejected():
+    with pytest.raises(AgentError, match="loop"):
+        validate_agent(_valid(loop={"graph": ["nope"]}))
+
+
+def test_loop_ref_and_graph_rejected():
+    with pytest.raises(AgentError, match="exactly one"):
+        validate_agent(_valid(loop={"ref": "killer-research", "graph": MIN_GRAPH}))
+
+
+def test_loop_alias_and_graph_rejected():
+    with pytest.raises(AgentError, match="exactly one"):
+        validate_agent(_valid(loop={"alias": "direct", "graph": MIN_GRAPH}))
+
+
+def test_loop_all_three_rejected():
+    with pytest.raises(AgentError, match="exactly one"):
+        validate_agent(_valid(loop={"ref": "x", "alias": "direct", "graph": MIN_GRAPH}))
+
+
+def test_loop_empty_object_rejected():
+    with pytest.raises(AgentError, match="no loop"):
+        validate_agent(_valid(loop={}))
+
+
+
 # ── closed top-level vocabulary ─────────────────────────────────────────────
 
 
@@ -261,6 +331,47 @@ def test_skill_tools_shape():
 def test_skill_entry_unknown_key_rejected():
     with pytest.raises(AgentError, match="unknown key"):
         validate_agent(_valid(skill=[{"path": "a.md", "run": "always"}]))
+
+
+# ── skill entries: text (inline) XOR path ───────────────────────────────────
+
+
+def test_skill_text_inline_fragment_validates():
+    ok = validate_agent(_valid(skill=[{"text": "Prefer small, verifiable steps."}]))
+    assert ok.skill[0].text == "Prefer small, verifiable steps."
+    assert ok.skill[0].path is None and ok.skill[0].tools is None
+
+
+def test_skill_text_with_declared_tools():
+    ok = validate_agent(_valid(skill=[{"text": "Cite sources.", "tools": ["web_search"]}]))
+    assert ok.skill[0].text == "Cite sources."
+    assert ok.skill[0].tools == ("web_search",)
+
+
+def test_skill_text_and_path_rejected():
+    with pytest.raises(AgentError, match="exactly one"):
+        validate_agent(_valid(skill=[{"text": "inline", "path": "a.md"}]))
+
+
+def test_skill_neither_text_nor_path_rejected():
+    with pytest.raises(AgentError, match="exactly one"):
+        validate_agent(_valid(skill=[{"tools": ["web_search"]}]))
+
+
+def test_skill_empty_text_rejected():
+    with pytest.raises(AgentError, match="skill\\[0\\].text"):
+        validate_agent(_valid(skill=[{"text": "   "}]))
+
+
+def test_mixed_text_and_path_entries_preserve_order():
+    ok = validate_agent(_valid(skill=[
+        {"text": "First fragment."},
+        {"path": "citation.md"},
+        {"text": "Second fragment."},
+    ]))
+    assert [s.text or s.path for s in ok.skill] == [
+        "First fragment.", "citation.md", "Second fragment.",
+    ]
 
 
 # ── settings ────────────────────────────────────────────────────────────────
