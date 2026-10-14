@@ -1,0 +1,254 @@
+/* LoopBuilder — the agent node's OWN loop-authoring surface.
+   Same "contains one child" family as the loop preview, but EDITABLE:
+   the rows below are the loop's nodes and wires, bound to the canvas's
+   working graph (shared state — the canvas is the zoom-out for it). */
+
+.box {
+  border: 1px solid
+    color-mix(in srgb, var(--ok) 45%, var(--border));
+  border-radius: 8px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--ok) 4%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.tag {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ok);
+  flex: none;
+}
+
+.headline {
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.sectionTitle em {
+  font-style: normal;
+  color: var(--text-faint);
+  font-weight: 600;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 3px 6px;
+  min-height: 26px;
+}
+
+.nodeId {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.nodeId b {
+  font-weight: 650;
+}
+
+.rename {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  border: 1px solid var(--accent);
+  background: var(--bg-soft);
+  color: var(--text);
+}
+
+.primitive {
+  font-style: normal;
+  font-size: 10.5px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edgeEnds {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+
+.edgeEnds b {
+  font-weight: 650;
+}
+
+.edgeEnds span {
+  color: var(--text-faint);
+}
+
+.edgeType {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--text-faint);
+  background: var(--bg-soft);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+.repeat {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--warn);
+  font-family: var(--mono);
+}
+
+.passes {
+  width: 44px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 1px 3px;
+  border-radius: 4px;
+  border: 1px solid
+    color-mix(in srgb, var(--warn) 50%, var(--border));
+  background: var(--surface);
+  color: var(--text);
+}
+
+.rowActions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 3px;
+  flex: none;
+}
+
+.mini {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  border-radius: 5px;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+.mini:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--text-muted) 40%, var(--border));
+}
+
+.miniDanger {
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  border-radius: 5px;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 5px;
+  cursor: pointer;
+}
+
+.miniDanger:hover {
+  color: var(--error);
+  background: color-mix(in srgb, var(--error) 10%, transparent);
+}
+
+.addRow,
+.edgeFormRow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.grow,
+.shrink {
+  font-size: 11px;
+  padding: 3px 5px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  min-width: 0;
+}
+
+.grow {
+  flex: 1;
+}
+
+.shrink {
+  max-width: 110px;
+}
+
+.typeSelect {
+  font-size: 11px;
+  padding: 3px 5px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  flex: none;
+}
+
+.add {
+  flex: none;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 11px;
+  font-weight: 650;
+  border-radius: 5px;
+  padding: 4px 9px;
+  cursor: pointer;
+}
+
+.add:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.hint {
+  margin: 0;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+.err {
+  margin: 0;
+  font-size: 10.5px;
+  color: var(--error);
+}

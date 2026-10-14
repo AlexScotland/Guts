@@ -61,6 +61,31 @@ app.add_middleware(
 )
 
 
+# ── Owned loops (the per-agent private loop, docs/agent-graph.md) ────────────
+
+#: The seed loop created when an author "builds" their agent's loop from an
+#: empty state: a single valid ``prompt`` node — clearly a starting point the
+#: canvas then extends (one entry, no edges, valid against the frozen contract).
+DEFAULT_LOOP_SEED: dict = {
+    "name": "agent loop",
+    "nodes": {"seed": {"primitive": "prompt", "config": {"text": "Set the context for this turn."}}},
+    "edges": [],
+}
+
+
+def _owned_loop_id(agent_id: str) -> str:
+    """A stable, always-valid graph id for ``agent_id``'s private loop: readable
+    (``loop__<agent-id>``) in the normal case, and safe for the pathological
+    64-char agent id (falls back to a hash) so it always satisfies the store's
+    ``[A-Za-z0-9_-]{0,64}`` token rule."""
+    candidate = f"loop__{agent_id}"
+    if len(candidate) <= 64:
+        return candidate
+    import hashlib
+
+    return "loop-" + hashlib.sha1(agent_id.encode("utf-8")).hexdigest()[:32]
+
+
 # ── Schemas ──────────────────────────────────
 
 
@@ -115,6 +140,21 @@ class AgentSaveRequest(BaseModel):
             "The agent document (validated against the agent-graph contract: "
             "closed vocabulary, persona + model + mcp[] + skill[] + settings + "
             "exactly one loop child)."
+        ),
+    )
+
+
+class AgentLoopRequest(BaseModel):
+    name: str | None = Field(
+        default=None,
+        description="Human-readable name for the agent's private loop (optional).",
+    )
+    graph: dict | None = Field(
+        default=None,
+        description=(
+            "The loop document to build (validated against the frozen v0 contract). "
+            "Omit to seed a minimal valid loop the canvas can then extend. The "
+            "'owner' field is set to the agent id automatically — do not set it."
         ),
     )
 
@@ -320,11 +360,76 @@ def get_agent(agent_id: str):
 def delete_agent(agent_id: str):
     """Delete a saved agent document (the bind it produced, if any, is
     dropped with it — activation is the only live effect, and the hot path
-    re-resolves per turn)."""
-    store = get_agent_store()
-    if not store.delete(agent_id):
+    re-resolves per turn).
+
+    Owned loops cascade: every loop the agent OWNS (a graph with
+    ``owner == agent_id`` — its PRIVATE loop) is removed with it, so no
+    private loop is ever left dangling after its agent disappears. A loop
+    the agent merely REFERENCED (a shared graph, no owner) survives."""
+    agent_store = get_agent_store()
+    if not agent_store.delete(agent_id):
         raise HTTPException(status_code=404, detail=f"unknown agent {agent_id!r}")
-    return describe_agents(store)
+    get_graph_store().delete_owned_by(agent_id)
+    return describe_agents(agent_store)
+
+
+@app.post("/api/agents/{agent_id}/loop")
+def create_agent_loop(agent_id: str, req: AgentLoopRequest):
+    """Build this agent's OWNED loop (the per-agent private loop).
+
+    Creates (idempotently replaces) a loop document in the graph store with
+    ``owner == agent_id`` and points the agent's ``loop.ref`` at it — so the
+    agent and its private loop are created together, which is what keeps the
+    ``loop.ref`` from ever dangling. No new execution path: the loop is a
+    first-class graph (own validator, own canvas), only its ownership is new.
+
+    404 when the agent is unknown; 400 when the supplied graph fails the
+    frozen v0 contract (never saved). Returns ``{agent_id, ref, name, owner,
+    node_count}`` — the agent's ``loop.ref`` now names this loop.
+    """
+    agent_store = get_agent_store()
+    graph_store = get_graph_store()
+
+    try:
+        agent_doc = agent_store.get(agent_id)
+    except (KeyError, AgentError) as exc:
+        raise HTTPException(status_code=404, detail=f"unknown agent {agent_id!r}: {exc}")
+
+    # Reuse the agent's existing owned loop when there is one (1:1), so this
+    # door is idempotent and never strands a second private loop.
+    existing = graph_store.owned_by(agent_id)
+    loop_id = existing[0] if existing else _owned_loop_id(agent_id)
+
+    graph = dict(req.graph if req.graph is not None else DEFAULT_LOOP_SEED)
+    if "owner" in graph and graph["owner"] is not None and graph["owner"] != agent_id:
+        raise HTTPException(
+            status_code=400,
+            detail=f"loop.graph.owner must be {agent_id!r} (this is {agent_id!r}'s private loop) or omitted",
+        )
+    graph["owner"] = agent_id  # the authoring door is where ownership is stamped
+
+    try:
+        graph_store.save(loop_id, graph, name=req.name)
+    except GraphError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    # Attach: point the agent's loop.ref at its owned loop, re-validating the
+    # agent doc (the ref now resolves, so this is a same-shape save).
+    attached = dict(agent_doc)
+    attached["loop"] = {"ref": loop_id}
+    try:
+        agent_store.save(agent_id, attached, name=agent_doc.get("name"))
+    except AgentError as exc:
+        raise HTTPException(status_code=400, detail=f"could not attach the loop to agent {agent_id!r}: {exc}")
+
+    saved = graph_store.get(loop_id)
+    return {
+        "agent_id": agent_id,
+        "ref": loop_id,
+        "name": saved.get("name") or loop_id,
+        "owner": agent_id,
+        "node_count": len(saved.get("nodes") or {}),
+    }
 
 
 @app.post("/api/agents/{agent_id}/activate")

@@ -110,6 +110,12 @@ class GraphStore:
         if not isinstance(doc, dict):
             raise GraphError("a graph document must be a JSON object")
         validate_graph(doc)  # raises GraphError → 400 at the API edge
+        owner = doc.get("owner")
+        if owner is not None and (not isinstance(owner, str) or not _ID_RE.match(owner)):
+            raise GraphError(
+                f"owner: when set, must be an agent-id [A-Za-z0-9_-] token naming the "
+                f"agent that OWNS this (private) loop; got {owner!r}"
+            )
         if name is not None:
             doc = {**doc, "name": str(name)}
         with self._lock:
@@ -138,6 +144,38 @@ class GraphStore:
                 self._persist_active()
             return True
 
+    # ── ownership (a graph may be the PRIVATE loop of one agent) ────────────
+
+    def owner_of(self, graph_id: str) -> str | None:
+        """The agent that owns ``graph_id`` (its private loop), or ``None`` for
+        a shared / standalone loop (the validator ignores unknown top-level
+        keys, so ``owner`` rides on the document itself — no store seam)."""
+        with self._lock:
+            doc = self._documents.get(graph_id)
+            owner = doc.get("owner") if isinstance(doc, dict) else None
+            return owner if isinstance(owner, str) else None
+
+    def owned_by(self, agent_id: str) -> list[str]:
+        """The ids of every loop owned by ``agent_id`` (usually exactly one),
+        in stable sorted order. An agent's loops are private to it: deleting
+        the agent removes these (see :meth:`delete_owned_by`)."""
+        with self._lock:
+            return sorted(
+                gid
+                for gid, doc in self._documents.items()
+                if isinstance(doc, dict) and doc.get("owner") == agent_id
+            )
+
+    def delete_owned_by(self, agent_id: str) -> list[str]:
+        """Delete every loop owned by ``agent_id`` (an agent's private loops
+        cascade with the agent). Returns the ids actually removed. Shared loops
+        (no owner) are never touched — an agent REFERENCE does not OWN."""
+        removed: list[str] = []
+        for gid in self.owned_by(agent_id):
+            if self.delete(gid):
+                removed.append(gid)
+        return removed
+
     # ── activation ───────────────────────────────────────────────
 
     @property
@@ -163,12 +201,14 @@ class GraphStore:
                     mtime = os.path.getmtime(self._path(gid))
                 except OSError:
                     mtime = None
+                owner = doc.get("owner") if isinstance(doc, dict) else None
                 out.append(
                     {
                         "id": gid,
                         "name": doc.get("name") or gid,
                         "version": str(doc.get("version", "1.0")),
                         "node_count": len(doc.get("nodes") or {}),
+                        "owner": owner if isinstance(owner, str) else None,
                         "active": gid == self._active_id,
                         "updated_at": mtime,
                     }

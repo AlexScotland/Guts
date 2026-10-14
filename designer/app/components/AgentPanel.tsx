@@ -24,14 +24,34 @@ import {
   type AgentDraft,
   type CanvasAgent,
 } from "../lib/agentNode";
+import LoopPreview from "./LoopPreview";
+import LoopBuilder from "./LoopBuilder";
+import type { CanvasEdge, CanvasGraph } from "../lib/graph";
 
 interface Props {
   agent: CanvasAgent;
   savedGraphIds: string[];
   graphId: string;
+  /** The canvas's OWN working graph — the loop builder's LIVE source (and
+   *  the preview's) when the draft's loop ref names this very graph. */
+  canvasGraph: CanvasGraph;
+  /** The primitive vocabulary for the builder's "add node" select (the
+   *  same source the Palette draws from — API or offline fallback). */
+  primitives: string[];
+  /** Bridge to the building surface: load the loop's saved graph onto the
+   *  canvas (the library's "open in canvas"). */
+  onOpenLoop: (graphId: string) => void;
   otherAgentIds: string[];
   busyLabel: string | null;
   onDraft: (id: string, patch: Partial<AgentDraft>) => void;
+  /** Loop-builder callbacks — they edit the CANVAS's working graph (the
+   *  same state the big canvas renders; page.tsx owns the mutations). */
+  onAddNode: (primitive: string) => void;
+  onRenameNode: (id: string, nextId: string) => void;
+  onRemoveNode: (id: string) => void;
+  onAddEdge: (from: string, to: string, type: "data" | "control") => void;
+  onPatchEdge: (edge: CanvasEdge, patch: Partial<CanvasEdge>) => void;
+  onRemoveEdge: (from: string, to: string, type: string) => void;
   /** Returns an error message, or null when committed. */
   onRename: (oldId: string, nextId: string) => string | null;
   onSave: (id: string) => void;
@@ -44,9 +64,18 @@ export default function AgentPanel({
   agent,
   savedGraphIds,
   graphId,
+  canvasGraph,
+  primitives,
+  onOpenLoop,
   otherAgentIds,
   busyLabel,
   onDraft,
+  onAddNode,
+  onRenameNode,
+  onRemoveNode,
+  onAddEdge,
+  onPatchEdge,
+  onRemoveEdge,
   onRename,
   onSave,
   onActivate,
@@ -100,6 +129,15 @@ export default function AgentPanel({
     onDraft(agent.id, {
       settings: draft.settings.map((r, j) => (j === i ? { ...r, ...patch } : r)),
     });
+
+  /** True when the slot's ref names THIS canvas's own graph — the agent
+   *  OWNS the loop being built, so the inline builder (over the canvas's
+   *  shared state) is the authoring surface instead of the read-only
+   *  preview. Trimmed on both sides: a padded hand-typed ref is the same
+   *  graph (draftToDoc/save-order trim identically). */
+  const loopIsCanvas =
+    draft.loop.mode === "ref" && graphId.trim() !== "" &&
+    draft.loop.ref.trim() === graphId.trim();
 
   const loopRefValue = draft.loop.mode === "ref" ? draft.loop.ref : "";
   const loopAliasValue =
@@ -419,11 +457,38 @@ export default function AgentPanel({
         </div>
       </div>
 
-      {/* the loop slot — the one child that runs: ref XOR alias */}
+      {/* the loop slot — the one child that runs: ref XOR alias. The
+          preview SHOWS the loop (live when it is the canvas's own graph —
+          the panel configures it, the loop is visible right here). */}
       <div className={styles.loopBox}>
         <h3 className={styles.sectionTitle} style={{ margin: 0 }}>
           loop — the one child that runs ({loopSlotLine(draft.loop)})
         </h3>
+        {loopIsCanvas ? (
+          /* v1 UX — the node OWNS its loop's authoring: when the slot is a
+             ref to THIS canvas's graph, the loop is built inline here (nodes,
+             wiring, the repeat's cap) over the SAME state the canvas renders;
+             the alias / foreign-ref slots keep the read-only preview. The
+             document and the contract are unchanged (ref XOR alias; the
+             save-order persists the canvas's graph first on Save). */
+          <LoopBuilder
+            graph={canvasGraph}
+            primitives={primitives}
+            onAddNode={onAddNode}
+            onRenameNode={onRenameNode}
+            onRemoveNode={onRemoveNode}
+            onAddEdge={onAddEdge}
+            onPatchEdge={onPatchEdge}
+            onRemoveEdge={onRemoveEdge}
+          />
+        ) : (
+          <LoopPreview
+            loop={draft.loop}
+            canvasGraph={canvasGraph}
+            canvasGraphId={graphId}
+            onOpenLoop={onOpenLoop}
+          />
+        )}
         <div className={styles.radioRow}>
           <label>
             <input
@@ -434,15 +499,13 @@ export default function AgentPanel({
                 onDraft(agent.id, {
                   // The click only fires when the radio is UNCHECKED (a
                   // re-click of the active mode is a no-op), so the previous
-                  // loop is always an alias here — pick the best available
-                  // saved id: this canvas's graph when it is already a saved
-                  // document, else the first saved graph.
+                  // loop is always an alias here — pick the most natural ref:
+                  // this canvas's graph (the loop you are building — the
+                  // save-order persists it together with the agent even if
+                  // it is not saved yet), else the first saved graph.
                   loop: {
                     mode: "ref",
-                    ref:
-                      graphId && savedGraphIds.includes(graphId)
-                        ? graphId
-                        : savedGraphIds[0] ?? "",
+                    ref: graphId || (savedGraphIds[0] ?? ""),
                   },
                 })
               }
@@ -468,7 +531,7 @@ export default function AgentPanel({
         </div>
         {draft.loop.mode === "ref" ? (
           <label className={styles.field}>
-            <span>ref (a SAVED graph id — save the loop before the agent)</span>
+            <span>ref (a graph id — if it's this canvas's graph, it's saved first, automatically)</span>
             <input
               list={refListId}
               value={loopRefValue}
@@ -516,7 +579,7 @@ export default function AgentPanel({
           title={
             issues.length > 0
               ? "Fix the preflight issues first (the backend validator would 400)"
-              : "POST /api/agents — validated on the backend before it is written"
+              : "POST /api/agents — if the loop slot names this canvas's graph, that graph is saved FIRST (the save-order); the backend validates before anything is written"
           }
           onClick={() => onSave(agent.id)}
         >

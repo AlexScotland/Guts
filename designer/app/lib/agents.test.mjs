@@ -18,6 +18,7 @@ import assert from "node:assert/strict";
 import {
   summarizeAgent,
   describeBundle,
+  describeLoopCanvas,
   describeLoopGraph,
 } from "./agents.ts";
 
@@ -135,4 +136,28 @@ test("loop-graph mini view: nodes with primitives + edge count, nothing invented
 test("loop-graph mini view: empty graph is empty (no phantom nodes/edges)", () => {
   const view = describeLoopGraph({ nodes: {}, edges: [] });
   assert.deepEqual(view, { nodes: [], edges: 0 });
+});
+
+// The canvas's OWN working graph is the LIVE source of the same preview
+// shape (no fetch, re-renders as the loop is drawn) — the preview cannot
+// tell the two sources apart, so they must agree.
+const HELLO_CANVAS = {
+  name: "hello",
+  nodes: [
+    { id: "frame", primitive: "prompt", x: 10, y: 10, config: { text: "Be concise." }, budget: null, branches: [] },
+    { id: "answer", primitive: "act", x: 270, y: 10, config: { task: "Answer the goal." }, budget: null, branches: [] },
+  ],
+  edges: [{ from: "frame", to: "answer", type: "data" }],
+};
+
+test("loop-canvas mini view: the SAME shape as the fetched-document view", () => {
+  const view = describeLoopCanvas(HELLO_CANVAS);
+  assert.deepEqual(view, describeLoopGraph(HELLO_GRAPH));
+});
+
+test("loop-canvas mini view: an empty canvas is an empty view", () => {
+  assert.deepEqual(
+    describeLoopCanvas({ name: "empty", nodes: [], edges: [] }),
+    { nodes: [], edges: 0 }
+  );
 });

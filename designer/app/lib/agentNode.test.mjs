@@ -18,7 +18,13 @@
  *  - `checkAgentDraft` is the preflight mirror of the closed validator
  *    (loop XOR + known aliases, transport pairing, alias uniqueness,
  *    settings slot keys ⊆ the six, provider enum, the id token rule) —
- *    an honest preview of the backend's 400, never a new authority.
+ *    an honest preview of the backend's 400, never a new authority;
+ *  - `graphToSaveBeforeAgent` is the SAVE-ORDER seam (docs/agent-graph.md):
+ *    the backend requires `loop.ref` to name a persisted graph, and the
+ *    only graph the canvas can change is the one ON the canvas — so a ref
+ *    naming the canvas's own graph means "persist that graph first", while
+ *    a ref to another (necessarily already-saved) graph or an alias loop
+ *    means "nothing precedes the agent save".
  *
  * Run with:    npm test
  * Requires:    Node ≥ 22.7 with type stripping enabled (Node ≥ 23.6 default).
@@ -29,6 +35,7 @@ import {
   checkAgentDraft,
   docToDraft,
   draftToDoc,
+  graphToSaveBeforeAgent,
   isValidAgentId,
   loopSlotLine,
   newAgentDraft,
@@ -41,10 +48,21 @@ const hasIssue = (draft, id, re) =>
   messages(checkAgentDraft(draft, id)).some((m) => re.test(m));
 const clean = (draft, id) => assert.deepEqual(checkAgentDraft(draft, id), []);
 
-test("fresh draft: a VALID minimal agent — the alias loop, nothing invented", () => {
+test("fresh draft WITHOUT a canvas id: a VALID minimal agent — the alias loop, nothing invented", () => {
   const d = newAgentDraft();
   clean(d, "agent1");
   assert.deepEqual(draftToDoc(d), { loop: { alias: "plan_execute" } });
+  // A blank canvas id means the same thing (no working graph to own):
+  assert.deepEqual(newAgentDraft("   ").loop, { mode: "alias", alias: "plan_execute" });
+});
+
+test("fresh draft WITH a canvas id: the loop slot OWNS it — a ref to THIS canvas's graph", () => {
+  const d = newAgentDraft("my-loop");
+  assert.deepEqual(d.loop, { mode: "ref", ref: "my-loop" });
+  clean(d, "agent1");
+  assert.deepEqual(draftToDoc(d), { loop: { ref: "my-loop" } });
+  // Trimmed identically to the save-order's trim (a padded id is the same graph):
+  assert.deepEqual(newAgentDraft("  my-loop  ").loop, { mode: "ref", ref: "my-loop" });
 });
 
 test("newAgentId: fresh, collision-free ids", () => {
@@ -214,6 +232,35 @@ test("docToDraft: a saved document loads into a clean draft (round-trip)", () =>
   const aliasDraft = docToDraft(aliasDoc);
   assert.deepEqual(aliasDraft.loop, { mode: "alias", alias: "plan_execute" });
   assert.deepEqual(draftToDoc(aliasDraft), aliasDoc);
+});
+
+test("graphToSaveBeforeAgent: the save-order (the backend needs a persisted ref)", () => {
+  const canvasId = "my-loop";
+
+  // A ref naming the CANVAS's OWN graph → that graph must be saved first
+  // (an idempotent overwrite — the ref stays honest, no new id invented).
+  const ownRef = { ...newAgentDraft(), loop: { mode: "ref", ref: canvasId } };
+  assert.equal(graphToSaveBeforeAgent(ownRef, canvasId), canvasId);
+
+  // Trimmed whitespace around the ref is the same graph (the slot trims too).
+  const padded = { ...ownRef, loop: { mode: "ref", ref: `  ${canvasId} ` } };
+  assert.equal(graphToSaveBeforeAgent(padded, canvasId), canvasId);
+
+  // A ref to ANOTHER graph → nothing precedes: by definition it is already
+  // saved (it was loaded from the store — the datalist's option list).
+  const otherRef = { ...newAgentDraft(), loop: { mode: "ref", ref: "killer-research" } };
+  assert.equal(graphToSaveBeforeAgent(otherRef, canvasId), null);
+
+  // An alias loop → a built-in, no document behind it, nothing precedes.
+  assert.equal(graphToSaveBeforeAgent(newAgentDraft(), canvasId), null);
+
+  // A blank ref names nothing — it would 400 preflight anyway; never
+  // claim a predecessor save for it.
+  const blank = { ...newAgentDraft(), loop: { mode: "ref", ref: "   " } };
+  assert.equal(graphToSaveBeforeAgent(blank, canvasId), null);
+
+  // No canvas graph id → nothing to compare against, nothing precedes.
+  assert.equal(graphToSaveBeforeAgent(ownRef, ""), null);
 });
 
 test("loopSlotLine: the ref names the saved graph, the alias the built-in", () => {

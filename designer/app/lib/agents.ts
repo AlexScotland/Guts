@@ -20,6 +20,7 @@ import type {
   AgentMeta,
   GraphDoc,
 } from "./types";
+import type { CanvasGraph } from "./graph";
 
 /** One line per agent (list view): the bundle's shape in the meta shape. */
 export function summarizeAgent(a: AgentMeta): string {
@@ -99,16 +100,32 @@ export function describeBundle(doc: AgentDocument, agentId: string): {
   };
 }
 
+/** The loop-preview shape: what a mini view of one turn-graph renders. */
+export interface LoopView {
+  nodes: { id: string; primitive: string }[];
+  edges: number;
+}
+
 /** Expand the agent's `loop` reference into the turn-graph's shape for the
  *  read-only mini view: the node list (id + primitive) and the edge count.
  *  The turn-graph is where execution happens — the agent is what binds it. */
-export function describeLoopGraph(doc: GraphDoc): {
-  nodes: { id: string; primitive: string }[];
-  edges: number;
-} {
+export function describeLoopGraph(doc: GraphDoc): LoopView {
   const nodes = Object.entries(doc.nodes ?? {}).map(([id, n]) => ({
     id,
     primitive: n.primitive,
   }));
   return { nodes, edges: (doc.edges ?? []).length };
+}
+
+/** The SAME preview shape from the canvas's OWN working graph — the LIVE
+ *  source for the agent card's loop preview when the loop slot names this
+ *  canvas's graph: derived from local state (no fetch), always the
+ *  "what it will run when saved" truth the save-order persists, and it
+ *  re-renders as the loop is drawn. The canvas is where loops are BUILT;
+ *  the preview is where the agent SHOWS its loop. */
+export function describeLoopCanvas(canvas: CanvasGraph): LoopView {
+  return {
+    nodes: canvas.nodes.map((n) => ({ id: n.id, primitive: n.primitive })),
+    edges: canvas.edges.length,
+  };
 }

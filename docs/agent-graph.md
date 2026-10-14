@@ -8,9 +8,15 @@ the bundle's shape on expand; the `loop` ref expandable into the referenced
 turn-graph, "open in canvas"), **and the designer's authoring surface** — the
 **agent node on the canvas** (add/edit/save/activate/delete/test-MCP over the
 `/api/agents` door; the loop child wired as a saved-graph `ref` or built-in
-`alias`; the backend validator stays the authority). Build order 1–8 is
-complete; this document stays the source of truth for v1 — and names what
-comes next (the nested/routed reading) as the roadmap.
+`alias`; the backend validator stays the authority), **and the agent-OWNED
+loop** — the node OWNS its loop's authoring: a fresh node is born with its
+loop slot naming the canvas's own graph, the inspector builds the loop
+**inline** over the canvas's shared working state (nodes, wires, the repeat),
+the card shows the loop as a live preview; on the backend the graph store
+carries loop `owner`, `POST /api/agents/{id}/loop` builds the agent's private
+loop (ref can never dangle), and deleting the agent cascades its owned loops.
+Build order 1–9 is complete; this document stays the source of truth for v1 —
+and names what comes next (the nested/routed reading) as the roadmap.
 **Date:** 2026-10-13 — Supersedes: the "agent groups" note in
 [ai-routing-nodes.md](ai-routing-nodes.md#out-of-scope-for-this-branch)
 (the *nested/routed* reading of it, which is deferred here).
@@ -229,7 +235,7 @@ Delete-saved / Test-MCP hit the door:
 | `mcp[]` | `{ alias, transport, url\|command }` | alias unique per document; `stdio` ⇒ `command`; `sse/http` ⇒ `url` |
 | `skill[]` | `{ path, tools? }` | `path` under the app root (the backend decides at save time) |
 | `settings?` | `slot → alias` | keys ⊆ the six slot names |
-| `loop` slot | `{ ref: <saved-graph-id> }` **XOR** `{ alias: "plan_execute" \| "direct" }` | exactly one — never both, never neither (the one child that runs) |
+| `loop` slot | `{ ref: <saved-graph-id> }` **XOR** `{ alias: "plan_execute" \| "direct" }` | exactly one — never both, never neither (the one child that runs); a `ref` naming **this canvas's own graph** is saved first, automatically, so the author no longer does a manual "save the loop before the agent" step |
 
 Invariants — the node is a **design-layer concern, not a slot**:
 
@@ -246,8 +252,72 @@ Invariants — the node is a **design-layer concern, not a slot**:
   rules (loop XOR + known aliases, transport pairing, alias uniqueness,
   settings slot keys, provider enum) — surfaced before save, never a new
   authority.
+- **Save-order (the "save the loop before the agent" step is UX, not a
+  rule):** the backend requires `loop.ref` to name a *persisted* graph
+  (the store passes its known ids to the validator), so the only graph the
+  canvas can still change is the one ON the canvas. `graphToSaveBeforeAgent`
+  pins that decision: a ref naming the canvas's own graph ⇒ `saveAgentNode`
+  persists that canvas document **first** (an idempotent overwrite — the
+  graph id is unchanged, so the ref stays honest), then the agent; a ref to
+  another graph (necessarily already saved — it was loaded from the store)
+  or an `alias` loop ⇒ nothing precedes the agent save. Every agent action
+  (Save, Activate, Test-MCP) funnels through that one seam, and the
+  success toast + busy label name the extra save when it happens.
 - Nothing in the node touches `schemas/graph.py`, `components/primitives/`,
   the 9-primitive vocabulary, or the pinned per-turn determinism oracle.
+
+## The loop you own — the node OWNS its loop's authoring
+
+The `loop` child stopped being a label. v1 UX: **the agent node owns the
+authoring of the loop it runs.**
+
+- **Born with its loop.** `newAgentDraft(canvasGraphId?)` (pinned in
+  `agentNode.test.mjs`): with a canvas graph id (the normal case), the fresh
+  node's loop slot is a `ref` **to the canvas's own graph** — the canvas is
+  where loops are built, and the agent is its border. Without a canvas id
+  (no working graph) it falls back to the built-in `alias` loop — still the
+  valid minimal doc `{ "loop": { "alias": "plan_execute" } }`, nothing
+  invented.
+- **The inspector builds inline.** When the slot names this canvas's graph,
+  the inspector (AgentPanel) shows the **`LoopBuilder`** instead of a
+  read-only preview: add a primitive node · rename (draft + commit, edges
+  re-point) · remove node; add a wire (data or the `⟲ repeat` — legal only
+  out of a verdict node, the add-edge row enforces it) · remove a wire · set
+  the repeat's `max_passes`. It edits **the SAME working graph the canvas
+  renders** — through page.tsx's shared mutation handlers, so the builder is
+  pure control surface and edits land where the author already looks.
+- **The card SHOWS the loop.** `LoopPreview` renders the loop's node chips
+  (+ edge count, capped for card width): **LIVE** from the canvas's working
+  state when the ref names this canvas's graph (no fetch —
+  `describeLoopCanvas`, the same `LoopView` shape as the fetched document,
+  pinned against `describeLoopGraph`), otherwise fetched once from the
+  saved graph (`getGraph` + `describeLoopGraph`, cached per ref) with an
+  "open in canvas →" bridge. VISUAL containment, not a contract change: the
+  document stays `loop: {ref}` — shareable, testable, independent.
+
+**Ownership on the backend (the one store-level lifecycle field).** A graph
+document may carry `owner: <agent-id>` — the agent that OWNS this (private)
+loop. It rides on the document itself (files are the store), is shape-checked
+at save (non-token ⇒ `GraphError` ⇒ 400), and surfaces in `GET /api/graphs`
+(`owner`, `null` for shared loops). The v0 turn-graph contract is untouched
+(the graph validator ignores `owner`; the closed 9-primitive vocabulary is
+closed). The seams, all in `components/graph_store.py` + `server.py`:
+
+| Door | Behavior |
+|---|---|
+| `POST /api/agents/{id}/loop` | **builds the agent's private loop**: saves a loop doc (a supplied validated graph, or the `DEFAULT_LOOP_SEED` one-node starting point) with `owner` **stamped by the door**, and points the agent's `loop.ref` at it in the same action — created together ⇒ the ref can **never dangle**. Idempotent 1:1 — reuse the agent's existing owned loop; a second one is never created. A loop `owner` that is not the agent's (or not omitted) ⇒ 400. |
+| `GET /api/graphs` | the loop lists with its `owner` (or `null` = shared). |
+| `DELETE /api/agents/{id}` | the agent's **owned** loops cascade away (no private loop left dangling after its agent); a loop the agent merely **referenced** (shared, no owner) **survives** — a reference does not own. |
+
+Activation is unchanged: bind-then-run resolves the ref to the agent's owned
+loop and runs it through the EXISTING `graph` slot (pinned by
+`tests/test_agent_loop_ownership.py`: `active_alias(LOOP) == "graph"` and
+`graph_store.active_id` is the owned loop — no new execution path).
+
+The two authoring surfaces agree on the rule: **a ref to the canvas's own
+graph = the node's; a ref to another saved graph = shared** (several agents
+can point at one loop — that stays the reference reading); the inline
+builder only opens in the first case.
 
 ## Failure model (consistent with the turn-graph)
 
@@ -257,6 +327,11 @@ Invariants — the node is a **design-layer concern, not a slot**:
   **visible bind failure** (an error on the activation route + a bind event),
   never a silent empty toolset or missing persona.
 - **Run time:** the turn itself fails exactly as it does today.
+- **Ownership time:** a non-token `owner` is a save-time `GraphError` (400,
+  never written); a loop doc supplied to the loop door with the wrong
+  `owner` is a 400 (never saved, the agent untouched); an owned loop never
+  outlives its agent (the delete cascades it), and a shared loop never dies
+  with a referencer — ownership is a lifecycle, enforced at the store.
 
 ## Out of scope (named, NOT built)
 
@@ -292,6 +367,21 @@ Invariants — the node is a **design-layer concern, not a slot**:
 - **Pool:** `get(alias)` reuses a live connection; `reset(alias)` re-spawns;
   no per-turn spawn (the fake connection counts its `connect` calls = 1 across
   N turns).
+- **Owned loop (pinned by `tests/test_agent_loop_ownership.py`):** `owner`
+  round-trips into the document and surfaces in `list_meta`; a malformed
+  `owner` ⇒ `GraphError`, never written; `POST /api/agents/{id}/loop` builds
+  the agent's private loop 1:1 (idempotent — the second call reuses the same
+  ref), **stamps** `owner` even on replace, and attaches the agent's
+  `loop.ref` to it (created together ⇒ no dangling ref); an invalid supplied
+  graph is a 400 — not saved, not attached, the agent untouched; a loop with
+  the wrong `owner` is a 400; `DELETE /api/agents/{id}` cascades the owned
+  loop but **spares** a shared loop another agent still references;
+  activation still resolves to `active_alias(LOOP) == "graph"` with the
+  owned loop as `active_id` — bind-then-run, no new execution path.
+  Designer side: `newAgentDraft(canvasGraphId)`, `graphToSaveBeforeAgent`,
+  and the shared `LoopView` shape (`describeLoopCanvas` ≡
+  `describeLoopGraph`) are pinned in `agentNode.test.mjs` /
+  `agents.test.mjs` (fakes only).
 
 ## Build order
 
@@ -319,6 +409,11 @@ Invariants — the node is a **design-layer concern, not a slot**:
 7. Docs cross-refs + `app/memory/architecture.md` refinement. *(done — this
    status line, the README feature blurb + docs list, and the memory entry)*
 8. The designer's **authoring surface** (items 1+2 of the continuation): the
+   (continued —) **save-order**: `graphToSaveBeforeAgent` (pinned by
+   `agentNode.test.mjs`) — when the loop slot names the canvas's own graph,
+   `saveAgentNode` persists that canvas document first, so "save the loop
+   before the agent" is no longer a manual step; see §"The agent node on the
+   canvas", invariants;
    agent-node contract `lib/agentNode.ts` (draft ⇄ document, preflight mirror,
    the id rule) pinned by `agentNode.test.mjs` (fakes only); the canvas's
    agent layer (a separate selection kind, drag/select/delete) in
@@ -330,6 +425,24 @@ Invariants — the node is a **design-layer concern, not a slot**:
    canvas →". *(done — `d68b903`: `agentNode.ts` + tests, `AgentCard`/
    `AgentPanel`, the `Canvas` agent layer, the `page.tsx` wiring, the
    `Palette`/`AgentLibrary` entry points, the `api.ts` door client)*
+9. **Owned loop — the node OWNS its loop's authoring** (the continuation):
+   `newAgentDraft(canvasGraphId)` — a fresh node is BORN with its loop slot
+   naming the canvas's own graph (the alias fallback only without a canvas
+   id; pinned); `LoopPreview` — the card/panel SHOW the loop (LIVE from
+   `describeLoopCanvas` when the ref is this canvas's graph, fetched via
+   `describeLoopGraph` otherwise; both the one `LoopView` shape, pinned
+   against each other; "open in canvas →" bridge); `LoopBuilder` — the
+   inspector's INLINE builder (add/rename/remove nodes, add/remove wires,
+   the repeat's `max_passes`, the verdict-only `⟲ repeat` rule) editing the
+   canvas's shared working state through page.tsx's
+   `renameLoopNode`/`removeLoopEdge` adapters (the builder is pure control
+   surface — the save-order persists the loop doc first on Save); backend —
+   `graph_store.owner_of/owned_by/delete_owned_by` + `owner` on
+   `list_meta`, `POST /api/agents/{id}/loop` (the owned-loop door: seed or
+   supplied loop, owner stamped, ref attached in one action, idempotent
+   1:1), the `DELETE /api/agents/{id}` cascade, all pinned by
+   `tests/test_agent_loop_ownership.py` (12 tests, fakes only); see
+   §"The loop you own". *(done — this continuation of build order 8)*
 
 ## Why
 

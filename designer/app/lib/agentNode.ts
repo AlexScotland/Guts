@@ -96,9 +96,16 @@ export interface CanvasAgent {
 
 // ── factories ──────────────────────────────────────────────────────────────
 
-/** A fresh, VALID minimal agent: the built-in alias loop, nothing else —
- *  it serializes to exactly `{ loop: { alias: "plan_execute" } }`. */
-export function newAgentDraft(): AgentDraft {
+/** A fresh, VALID minimal agent — the loop slot OWNS the authoring surface:
+ *  when a canvas graph id is given (the normal case — the canvas is where
+ *  the loop is built), the slot is a `ref` to THIS canvas's own graph, so
+ *  the new node is born with its loop (edit it inline on the card, or on
+ *  the canvas; saving the agent persists the loop first — the save-order).
+ *  Without a canvas id (no working graph) it falls back to the BUILT-IN
+ *  alias loop and serializes to exactly `{ loop: { alias: "plan_execute" } }`
+ *  — everything omitted, nothing invented. */
+export function newAgentDraft(canvasGraphId?: string): AgentDraft {
+  const canvas = (canvasGraphId ?? "").trim();
   return {
     name: "",
     prompt: "",
@@ -106,7 +113,9 @@ export function newAgentDraft(): AgentDraft {
     mcp: [],
     skill: [],
     settings: [],
-    loop: { mode: "alias", alias: AGENT_LOOP_ALIASES[0] },
+    loop: canvas
+      ? { mode: "ref", ref: canvas }
+      : { mode: "alias", alias: AGENT_LOOP_ALIASES[0] },
   };
 }
 
@@ -137,6 +146,36 @@ export function loopSlotLine(slot: AgentLoopSlot): string {
   return slot.mode === "ref"
     ? `saved graph "${slot.ref}"`
     : `built-in "${slot.alias}"`;
+}
+
+/** The save-order rule of the REST door: which graph, if any, must be
+ *  saved BEFORE this agent save — its id, or null when nothing precedes.
+ *
+ *  The backend validator requires `loop.ref` to name a PERSISTED graph
+ *  (app/components/agent_store.py passes the known graph ids; the
+ *  "save the loop before the agent" rule in docs/agent-graph.md). The
+ *  only graph the canvas can change is the one currently on it — a ref
+ *  to any OTHER id is necessarily already saved (it was loaded from the
+ *  store, which is where the datalist options come from), and an
+ *  `alias` is a built-in with no document behind it. So: when the
+ *  draft's loop slot names the canvas's own turn-graph, the canvas
+ *  document is persisted first (an idempotent overwrite — the graph id
+ *  stays put, so the agent's ref remains honest); any other loop slot
+ *  needs no predecessor save. A blank ref names nothing (it fails
+ *  preflight anyway — the backend would 400 the same way).
+ *
+ *  Pure decision, pinned by agentNode.test.mjs; the actual saves are
+ *  page.tsx's `saveAgentNode` (which every agent action — Save,
+ *  Activate, Test-MCP — funnels through). */
+export function graphToSaveBeforeAgent(
+  draft: AgentDraft,
+  canvasGraphId: string
+): string | null {
+  if (draft.loop.mode !== "ref") return null;
+  const ref = draft.loop.ref.trim();
+  const canvas = canvasGraphId.trim();
+  if (!ref || !canvas) return null;
+  return ref === canvas ? ref : null;
 }
 
 // ── draft ⇄ document (the REST door's exact shape) ────────────────────────

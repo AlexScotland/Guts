@@ -88,32 +88,6 @@
   gap: 6px;
 }
 
-.loopRow {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px dashed color-mix(in srgb, var(--warn) 55%, var(--border));
-  border-radius: 8px;
-  padding: 5px 8px;
-  background: color-mix(in srgb, var(--warn) 7%, transparent);
-}
-
-.loopTag {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--warn);
-  flex: none;
-}
-
-.loopLine {
-  font-size: 11.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -132,6 +106,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.loopNote {
+  margin: -2px 0 0;
+  font-size: 10px;
+  font-style: italic;
+  color: var(--text-faint);
 }
 
 .foot {

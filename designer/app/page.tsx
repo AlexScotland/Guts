@@ -47,6 +47,7 @@ import {
 import {
   docToDraft,
   draftToDoc,
+  graphToSaveBeforeAgent,
   isValidAgentId,
   newAgentDraft,
   newAgentId,
@@ -452,18 +453,36 @@ export default function Page() {
     []
   );
 
+  /** The agent inspector's inline loop-builder is PURE control surface: it
+   *  edits the SAME working graph the canvas renders, through the shared
+   *  mutation handlers above. The builder's remove-edge seam takes
+   *  (from, to, type) — adapt it onto the key-based `removeEdge`. A rename
+   *  routes through `patchNode`, which re-points edges (its idiom). */
+  const renameLoopNode = useCallback(
+    (id: string, nextId: string) => patchNode(id, { id: nextId }),
+    [patchNode]
+  );
+  const removeLoopEdge = useCallback(
+    (from: string, to: string, type: string) =>
+      removeEdge(`${from}->${to}:${type}`),
+    [removeEdge]
+  );
+
   // ── the agent layer (docs/agent-graph.md — a SECOND document family) ─────
   // The canvas agent nodes are DRAFTS of agent documents. Nothing here
   // touches the turn-graph doc; Save/Activate/Delete/Test-MCP are the REST
   // door, where app/schemas/agent.py stays the authority (400 = honest
   // failure), and the fakes-only oracle on the backend stays untouched.
 
-  /** A fresh agent node on the canvas: a minimal VALID draft (the alias
-   *  loop, nothing invented), positioned right of the turn-graph column. */
+  /** A fresh agent node on the canvas: a minimal VALID draft whose loop slot
+   *  NAMES THIS CANVAS's own graph (the agent is BORN around its loop — the
+   *  node owns the loop's authoring; saving the agent persists the loop
+   *  first, the save-order). No canvas graph id ⇒ the alias fallback (a
+   *  valid minimal doc, nothing invented). Positioned right of the column. */
   const addAgentNode = useCallback(() => {
     const existing = canvasAgents.map((a) => a.id);
     const id = newAgentId(existing);
-    const draft = newAgentDraft();
+    const draft = newAgentDraft(graph.id);
     const n = existing.length;
     setCanvasAgents((a) => [
       ...a,
@@ -471,8 +490,8 @@ export default function Page() {
     ]);
     setAgentBaselines((b) => ({ ...b, [id]: JSON.stringify(draftToDoc(draft)) }));
     setSelection({ kind: "agent", id });
-    notify(true, `Added agent node ${id} — edit, then Save hits the REST door.`);
-  }, [canvasAgents, notify]);
+    notify(true, `Added agent node ${id} — its loop is ${graph.id} on this canvas; edit inline, then Save hits the REST door.`);
+  }, [canvasAgents, notify, graph.id]);
 
   /** Open a SAVED agent as a canvas node (the library's "edit on canvas"):
    *  the document loads through the door into a draft. A node with that id
@@ -558,37 +577,67 @@ export default function Page() {
   );
 
   /** POST /api/agents — the authority (app/schemas/agent.py) validates BEFORE
-   *  writing. Throws on failure; callers own the busy/toast bookkeeping. */
+   *  writing. Save-order: if the loop slot names the canvas's OWN graph,
+   *  that canvas document is persisted FIRST (idempotent overwrite, same id)
+   *  — the backend requires loop.ref to name a persisted graph, and the
+   *  designer no longer asks the author for the manual "save the loop first"
+   *  step (docs/agent-graph.md §save-order). A ref to another saved graph
+   *  or an alias loop needs nothing before it. Throws on failure; callers
+   *  own the busy/toast bookkeeping. */
   const saveAgentNode = useCallback(
     async (id: string): Promise<void> => {
       const agent = canvasAgents.find((a) => a.id === id);
       if (!agent) throw new Error(`no canvas agent node "${id}"`);
+      if (graphToSaveBeforeAgent(agent.draft, graph.id) === graph.id) {
+        const gdoc = toDoc(graph);
+        await saveGraph(graph.id, graph.name, gdoc);
+        // The canvas is now in sync with the store (dirty → clean).
+        setBaseline(JSON.stringify(gdoc));
+      }
       const doc = draftToDoc(agent.draft);
       await saveAgent(id, agent.draft.name.trim() || null, doc);
       setAgentBaselines((b) => ({ ...b, [id]: JSON.stringify(doc) }));
     },
-    [canvasAgents]
+    [canvasAgents, graph]
   );
 
   const onAgentSave = useCallback(
     async (id: string) => {
-      setAgentBusy({ id, label: "saving…" });
+      // Honest busy label: the save-order may persist the canvas's own loop
+      // document before the agent — say so in the label, not just in a
+      // success toast the author might not connect.
+      const agent = canvasAgents.find((a) => a.id === id);
+      const withLoop = !!(
+        agent && graphToSaveBeforeAgent(agent.draft, graph.id)
+      );
+      setAgentBusy({ id, label: withLoop ? "saving loop + agent…" : "saving…" });
       try {
         await saveAgentNode(id);
         await refreshDoors();
-        notify(true, `Saved agent ${id} (validated on the backend).`);
+        notify(true, withLoop
+          ? `Saved loop ${graph.id} + agent ${id} (both validated on the backend).`
+          : `Saved agent ${id} (validated on the backend).`);
       } catch (e) {
         notify(false, e instanceof Error ? e.message : String(e));
       } finally {
         clearAgentBusy(id);
       }
     },
-    [saveAgentNode, refreshDoors, notify, clearAgentBusy]
+    [canvasAgents, graph.id, saveAgentNode, refreshDoors, notify, clearAgentBusy]
   );
 
   const onAgentActivate = useCallback(
     async (id: string) => {
-      setAgentBusy({ id, label: "activating…" });
+      const agent = canvasAgents.find((a) => a.id === id);
+      const withLoop = !!(
+        agent &&
+        agentDirty[id] && // only when a save is actually needed
+        graphToSaveBeforeAgent(agent.draft, graph.id)
+      );
+      setAgentBusy({
+        id,
+        label: withLoop ? "saving loop, activating…" : "activating…",
+      });
       try {
         // Bind-then-run: an unsaved draft must be the saved one that binds.
         if (agentDirty[id]) await saveAgentNode(id);
@@ -601,7 +650,7 @@ export default function Page() {
         clearAgentBusy(id);
       }
     },
-    [agentDirty, saveAgentNode, refreshDoors, notify, clearAgentBusy]
+    [agentDirty, canvasAgents, graph.id, saveAgentNode, refreshDoors, notify, clearAgentBusy]
   );
 
   const onDeleteSavedAgent = useCallback(
@@ -869,6 +918,14 @@ export default function Page() {
             agentBusy={agentBusy}
             savedGraphIds={savedGraphIds}
             currentGraphId={graph.id}
+            onOpenLoop={(id) => void loadGraph(id)}
+            /* the inspector's inline loop builder (the node OWNING its loop)
+               edits this same working graph through the shared handlers */
+            agentPrimitives={primitives.map((p) => p.primitive)}
+            onAgentAddNode={addNode}
+            onAgentRenameNode={renameLoopNode}
+            onAgentPatchEdge={patchEdge}
+            onAgentRemoveEdge={removeLoopEdge}
             onMoveAgent={moveAgentNode}
             onRemoveAgent={removeAgentNode}
             onAgentDraft={patchAgentDraft}

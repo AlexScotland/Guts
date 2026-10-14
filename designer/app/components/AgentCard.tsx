@@ -5,21 +5,21 @@
  * canvas"): the designer's rendering of ONE agent document — the capability
  * bundle around exactly one `loop` child. It is a DESIGN-layer card: no
  * dataflow ports (the agent produces/consumes no goal/context/plan/result),
- * no wire endpoints; its one child shows as the loop ref/alias SLOT on the
- * card, because the wire agent → loop is a reference, never an in-canvas
- * edge. Selecting it opens the on-node inspector (AgentPanel) — the
- * authoring surface over the POST /api/agents door.
+ * no wire endpoints; its one child is SHOWN on the card as a loop preview
+ * (a mini render of the loop's nodes — LIVE when the ref names the canvas's
+ * own graph, the fetched saved document otherwise — plus "open in canvas"),
+ * because the wire agent → loop is a reference, never an in-canvas edge.
+ * Selecting it opens the on-node inspector (AgentPanel) — the authoring
+ * surface over the POST /api/agents door.
  */
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import AgentPanel from "./AgentPanel";
+import LoopPreview from "./LoopPreview";
 import styles from "./AgentCard.module.css";
-import {
-  loopSlotLine,
-  type AgentDraft,
-  type CanvasAgent,
-} from "../lib/agentNode";
+import type { AgentDraft, CanvasAgent } from "../lib/agentNode";
+import type { CanvasEdge, CanvasGraph } from "../lib/graph";
 
 interface Props {
   agent: CanvasAgent;
@@ -32,6 +32,24 @@ interface Props {
   savedGraphIds: string[];
   /** The current canvas's turn-graph id (the natural first ref option). */
   graphId: string;
+  /** The canvas's OWN working graph — the loop preview's LIVE source when
+   *  the draft's loop ref names this very graph (no fetch, updates as the
+   *  loop is drawn). */
+  canvasGraph: CanvasGraph;
+  /** The primitive vocabulary for the builder's "add node" select (the
+   *  same source the Palette draws from). */
+  primitives: string[];
+  /** Bridge to the building surface: load the loop's saved graph onto the
+   *  canvas (the library's "open in canvas"). */
+  onOpenLoop: (graphId: string) => void;
+  /** Loop-builder callbacks (the inspector's inline builder edits the
+   *  canvas's shared state; page.tsx owns the mutations). */
+  onAddNode: (primitive: string) => void;
+  onRenameNode: (id: string, nextId: string) => void;
+  onRemoveNode: (id: string) => void;
+  onAddEdge: (from: string, to: string, type: "data" | "control") => void;
+  onPatchEdge: (edge: CanvasEdge, patch: Partial<CanvasEdge>) => void;
+  onRemoveEdge: (from: string, to: string, type: string) => void;
   /** The other canvas agent ids (rename collision check). */
   otherAgentIds: string[];
   /** "saving…" / "activating…" / "testing…" while an action is in flight. */
@@ -62,6 +80,15 @@ export default function AgentCard({
   dirty,
   savedGraphIds,
   graphId,
+  canvasGraph,
+  primitives,
+  onOpenLoop,
+  onAddNode,
+  onRenameNode,
+  onRemoveNode,
+  onAddEdge,
+  onPatchEdge,
+  onRemoveEdge,
   otherAgentIds,
   busyLabel,
   onCardPointerDown,
@@ -154,12 +181,26 @@ export default function AgentCard({
       </header>
 
       <div className={styles.body}>
-        {/* The one child that runs — a ref/alias SLOT, not a wire: the agent
-            → loop edge is a reference (a saved graph id or a built-in loop). */}
-        <div className={styles.loopRow} title="The one child that runs — exactly one of: a saved turn-graph (ref) or a built-in loop (alias)">
-          <span className={styles.loopTag}>loop</span>
-          <span className={styles.loopLine}>{loopSlotLine(draft.loop)}</span>
-        </div>
+        {/* The one child that runs — SHOWN, not just linked (docs/agent-graph.md
+            §loop preview): a mini render of the loop, live when the ref names
+            the canvas's own graph (the canvas is where loops are built; this
+            is the agent's border around them), the fetched saved document
+            otherwise. The document stays a reference — shareable, testable,
+            independent — the card just stops reading like a label. */}
+        <LoopPreview
+          loop={draft.loop}
+          canvasGraph={canvasGraph}
+          canvasGraphId={graphId}
+          onOpenLoop={onOpenLoop}
+        />
+        {draft.loop.mode === "ref" &&
+          graphId.trim() !== "" &&
+          draft.loop.ref.trim() === graphId.trim() && (
+            <p className={styles.loopNote}>
+              this node owns its loop — select it to shape it inline (nodes,
+              wires, the repeat) in its inspector
+            </p>
+          )}
         {chips.length > 0 && (
           <div className={styles.chips}>
             {chips.map((c) => (
@@ -214,6 +255,15 @@ export default function AgentCard({
                 agent={agent}
                 savedGraphIds={savedGraphIds}
                 graphId={graphId}
+                canvasGraph={canvasGraph}
+                primitives={primitives}
+                onOpenLoop={onOpenLoop}
+                onAddNode={onAddNode}
+                onRenameNode={onRenameNode}
+                onRemoveNode={onRemoveNode}
+                onAddEdge={onAddEdge}
+                onPatchEdge={onPatchEdge}
+                onRemoveEdge={onRemoveEdge}
                 otherAgentIds={otherAgentIds}
                 busyLabel={busyLabel}
                 onDraft={onDraft}

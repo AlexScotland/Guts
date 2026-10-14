@@ -71,6 +71,21 @@ interface Props {
   savedGraphIds?: string[];
   /** The current canvas's turn-graph id (the natural first ref option). */
   currentGraphId?: string;
+  /** Bridge for the agent card's loop preview: load the referenced loop's
+   *  saved graph onto the canvas (the library's "open in canvas"). */
+  onOpenLoop?: (graphId: string) => void;
+  /** The primitive vocabulary (names) for the agent inspector's inline
+   *  loop-builder "add node" row (the same source the Palette draws from). */
+  agentPrimitives?: string[];
+  /** Loop-builder bridges: when the slot names THIS canvas's graph the agent
+   *  OWNS the loop's authoring — the inspector's inline builder edits the
+   *  SAME working graph the canvas renders (page.tsx owns the mutations);
+   *  the builder's node-removal and wire-adding reuse `onRemoveNode` /
+   *  `onAddEdge` (same shapes, same effect on the shared state). */
+  onAgentAddNode?: (primitive: string) => void;
+  onAgentRenameNode?: (id: string, nextId: string) => void;
+  onAgentPatchEdge?: (edge: CanvasEdge, patch: Partial<CanvasEdge>) => void;
+  onAgentRemoveEdge?: (from: string, to: string, type: string) => void;
   onMoveAgent?: (id: string, x: number, y: number) => void;
   onRemoveAgent?: (id: string) => void;
   onAgentDraft?: (id: string, patch: Partial<AgentDraft>) => void;
@@ -143,6 +158,12 @@ export default function Canvas({
   agentBusy = null,
   savedGraphIds = [],
   currentGraphId = "",
+  onOpenLoop = () => undefined,
+  agentPrimitives = [],
+  onAgentAddNode,
+  onAgentRenameNode,
+  onAgentPatchEdge,
+  onAgentRemoveEdge,
   onMoveAgent,
   onRemoveAgent,
   onAgentDraft,
@@ -483,6 +504,20 @@ export default function Canvas({
             dirty={Boolean(agentDirty[agent.id])}
             savedGraphIds={savedGraphIds}
             graphId={currentGraphId}
+            canvasGraph={graph}
+            onOpenLoop={onOpenLoop}
+            primitives={agentPrimitives}
+            onAddNode={onAgentAddNode ?? (() => undefined)}
+            onRenameNode={onAgentRenameNode ?? (() => undefined)}
+            onRemoveNode={onRemoveNode}
+            onAddEdge={onAddEdge}
+            onPatchEdge={onAgentPatchEdge ?? (() => undefined)}
+            onRemoveEdge={
+              /* the builder's (from, to, type) seam adapted onto this canvas's
+                 key-based removeEdge (the same from->to:type key shape) */
+              onAgentRemoveEdge ??
+              ((from, to, type) => onRemoveEdge(`${from}->${to}:${type}`))
+            }
             otherAgentIds={canvasAgents
               .map((a) => a.id)
               .filter((a) => a !== agent.id)}
