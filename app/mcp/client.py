@@ -328,7 +328,14 @@ class _UrlConnection(McpConnection):
         if not url:
             raise McpError(f"{self.transport} MCP entry has no url")
         self.url = url
-        self._headers = {"Content-Type": "application/json", **(headers or {})}
+        # MCP (Streamable HTTP) requires the client to accept both possible
+        # response shapes — plain JSON and an SSE stream — or strict gateways
+        # answer the first `initialize` POST with 406.
+        self._headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            **(headers or {}),
+        }
         self._ids_it = itertools.count(1)
         self._connected = False
 
@@ -352,7 +359,9 @@ class _UrlConnection(McpConnection):
         if not resp.content:
             return None  # an empty ack (notifications/initialized), not a result
         ctype = (resp.headers.get("Content-Type") or "").lower()
-        if self.transport == "sse" and "text/event-stream" in ctype:
+        # The response shape is the SERVER's choice (JSON or SSE), not the
+        # declared transport — branch on the actual Content-Type only.
+        if "text/event-stream" in ctype:
             return _sse_extract(resp)
         try:
             return resp.json()

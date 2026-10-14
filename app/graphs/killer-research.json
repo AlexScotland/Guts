@@ -1,12 +1,7 @@
 {
-  "name": "killer",
-  "version": "1.0",
-  "budget": 120,
-  "max_parallel": 2,
   "nodes": {
     "fanout": {
       "primitive": "parallel",
-      "config": {},
       "branches": [
         {
           "name": "web",
@@ -55,8 +50,7 @@
       }
     },
     "judge": {
-      "primitive": "critic",
-      "config": {}
+      "primitive": "critic"
     }
   },
   "edges": [
@@ -81,5 +75,9 @@
       "type": "control",
       "max_passes": 2
     }
-  ]
+  ],
+  "name": "killer",
+  "version": "1.0",
+  "budget": 120,
+  "max_parallel": 2
 }

@@ -24,3 +24,5 @@ searxng/.env
 # package manager caches + deps
 .npm-cache/
 node_modules/
+# local git safe.directory wrapper (sandbox env helper, not project code)
+.git-safe
