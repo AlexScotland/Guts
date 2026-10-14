@@ -77,6 +77,7 @@ class ComponentRegistry:
         self._primitives: dict[str, _Entry] = {}
         self._primitive_instances: dict[str, object] = {}
         self._graphs_view: object = None
+        self._agents_view: object = None
 
     # ── registration ───────────────────────────────────────────
 
@@ -290,6 +291,16 @@ class ComponentRegistry:
         with self._lock:
             self._graphs_view = view
 
+    def set_agents_view(self, view):
+        """Bind the ``agents`` block of describe() to a zero-arg callable.
+
+        Wired to the process-shared AgentStore (like ``set_graphs_view``) —
+        the registry stays store-agnostic, and GET /api/components shows
+        the two document doors (graphs + agents) in one response.
+        """
+        with self._lock:
+            self._agents_view = view
+
     @staticmethod
     def _primitive_view(alias: str, entry: _Entry) -> dict:
         """Serializable primitive card (name, version, ports, side effects)."""
@@ -332,6 +343,8 @@ class ComponentRegistry:
             ]
             if self._graphs_view is not None:
                 view["graphs"] = self._graphs_view()
+            if self._agents_view is not None:
+                view["agents"] = self._agents_view()
             return view
 
 

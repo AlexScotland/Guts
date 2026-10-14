@@ -14,6 +14,7 @@ let a whole configuration be swapped in one call.
 from .builtin import (
     COMPONENT_ALIASES,
     PRESETS,
+    register_agent_components,
     register_builtin_components,
     register_graph_components,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "StaticRegistry",
     "apply_manifest",
     "load_manifest",
+    "register_agent_components",
     "register_builtin_components",
     "register_graph_components",
 ]

@@ -23,6 +23,7 @@ from components import (
     ComponentRegistry,
     ComponentSlot,
     apply_manifest,
+    register_agent_components,
     register_builtin_components,
     register_graph_components,
 )
@@ -91,6 +92,7 @@ def get_registry() -> ComponentRegistry:
     # The graph loop (loop.graph) + the 8 primitives + the /api/graphs store:
     # purely additive — activation is explicit, default pipeline untouched.
     register_graph_components(registry, context)
+    register_agent_components(registry)
     _shared_registry = registry
     return _shared_registry
 

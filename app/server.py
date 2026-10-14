@@ -18,6 +18,11 @@ Exposes:
   GET  /api/graphs/{id}       — fetch one saved document (canvas render)
   DELETE /api/graphs/{id}     — delete a saved graph document
   GET  /api/graphs/{id}/last-run — last run record (events = canvas seam)
+  GET  /api/agents            — saved agent documents (capability-composition)
+  POST /api/agents            — save an agent document (validated, id + doc)
+  GET  /api/agents/{id}       — fetch one saved document (designer render)
+  DELETE /api/agents/{id}     — delete a saved agent document
+  POST /api/agents/{id}/activate — make a saved agent the ACTIVE one
   GET  /health                — liveness probe
 """
 
@@ -31,6 +36,7 @@ from typing import Literal
 
 from components import ComponentSlot
 from components.graph_store import GraphError, describe_graphs, get_graph_store
+from components.agent_store import AgentError, describe_agents, get_agent_store
 from components.primitives.base import describe_error
 from main import build_agent, get_registry
 
@@ -94,6 +100,19 @@ class GraphSaveRequest(BaseModel):
         description=(
             "The graph document (validated against the frozen v0 contract: "
             "closed 8-primitive vocabulary, typed edges, one entry, bounded retries)."
+        ),
+    )
+
+
+class AgentSaveRequest(BaseModel):
+    id: str = Field(..., description="Stable agent id: a [A-Za-z0-9_-] token.")
+    name: str | None = Field(default=None, description="Human-readable name (optional).")
+    agent: dict = Field(
+        ...,
+        description=(
+            "The agent document (validated against the agent-graph contract: "
+            "closed vocabulary, persona + model + mcp[] + skill[] + settings + "
+            "exactly one loop child)."
         ),
     )
 
@@ -239,6 +258,82 @@ def last_graph_run(graph_id: str):
             detail=f"graph {graph_id!r} has no run recorded in this process yet",
         )
     return record
+
+
+# ── Agents (the capability-composition document, docs/agent-graph.md) ──────
+
+
+@app.get("/api/agents")
+def list_agents():
+    """Saved agent documents (the agent-graph vocabulary): the active id +
+    one line per document (persona, model, mcp, skills, settings, loop).
+    Agents are JSON files; the store validates every document against the
+    closed-vocabulary contract at save time."""
+    return describe_agents(get_agent_store())
+
+
+@app.post("/api/agents")
+def save_agent(req: AgentSaveRequest):
+    """Save (create or overwrite) an agent document by id.
+
+    The document is validated against the closed-vocabulary agent contract
+    (exactly one loop child, closed mcp/providers enums, skill paths under
+    the app root, settings keys ⊆ the six slot names) BEFORE it is
+    persisted — an invalid agent is a 400, never a saved file.
+
+    Returns the same shape as GET /api/agents and DELETE (``{active,
+    agents: [...]}``) — one family shape, like the graph door.
+    """
+    try:
+        get_agent_store().save(req.id, req.agent, name=req.name)
+    except AgentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return describe_agents(get_agent_store())
+
+
+@app.get("/api/agents/{agent_id}")
+def get_agent(agent_id: str):
+    """Fetch one saved agent document by id (id + name + the full document)
+    so the designer can render it. 404 when the id is not a saved agent."""
+    store = get_agent_store()
+    try:
+        doc = store.get(agent_id)
+    except (KeyError, AgentError):
+        raise HTTPException(status_code=404, detail=f"unknown agent {agent_id!r}")
+    return {
+        "id": agent_id,
+        "name": doc.get("name") or agent_id,
+        "agent": doc,
+    }
+
+
+@app.delete("/api/agents/{agent_id}")
+def delete_agent(agent_id: str):
+    """Delete a saved agent document (the bind it produced, if any, is
+    dropped with it — activation is the only live effect, and the hot path
+    re-resolves per turn)."""
+    store = get_agent_store()
+    if not store.delete(agent_id):
+        raise HTTPException(status_code=404, detail=f"unknown agent {agent_id!r}")
+    return describe_agents(store)
+
+
+@app.post("/api/agents/{agent_id}/activate")
+def activate_agent(agent_id: str):
+    """Make a saved agent the ACTIVE one (flips the store's active id).
+
+    Bind-then-run: activation lands on the NEXT /api/chat turn (the pinned
+    per-turn-snapshot semantics) exactly like every slot swap — no restart,
+    no in-flight change. The bind itself (model/MCP/skills/persona onto the
+    shared context) happens over the existing slot/turn-graph seams; this
+    route owns the door + the active pointer.
+    """
+    store = get_agent_store()
+    try:
+        store.set_active(agent_id)
+    except (KeyError, AgentError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return describe_agents(store)
 
 
 @app.get("/health", response_model=HealthResponse)

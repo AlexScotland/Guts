@@ -225,3 +225,21 @@ def register_graph_components(
         # Keep the store reachable on the context too (belt + braces for the
         # context.extras["graph_store"] fallback in GraphLoop.resolve_store).
         context.extras["graph_store"] = store
+
+
+def register_agent_components(
+    registry: ComponentRegistry,
+    agent_store=None,
+) -> None:
+    """Wire the agent-graph door (v1, docs/agent-graph.md) into a registry.
+
+    Purely additive — no slot, no primitive, no transport: the agent graph
+    is a *document* (a sibling of the turn-graph), and describe() gains the
+    ``agents`` block (active id + saved documents) in parallel to ``graphs``.
+    The store's loop.ref seam points at the shared graph store, so the two
+    document doors' save-time checks line up (unknown ref = 400).
+    """
+    from .agent_store import describe_agents, get_agent_store
+
+    store = agent_store or get_agent_store()
+    registry.set_agents_view(lambda: describe_agents(store))
