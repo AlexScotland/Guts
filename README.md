@@ -214,7 +214,8 @@ docs/         the tutorial + the design docs; the graph contract and its
                agent-graph.md          (layer above: the agent as a
                                        capability-composition doc — model +
                                        MCP + skills + exactly one loop;
-                                       design, not yet built)
+                                       implemented — the designer node
+                                       stays on the roadmap)
 ```
 
 ## Design principles

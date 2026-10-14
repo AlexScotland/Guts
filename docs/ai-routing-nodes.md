@@ -179,7 +179,8 @@ dual-output pattern in the contract).
   is a second, sibling *document* (model + MCP + skills + persona + exactly
   one `loop` child, the turn-graph) bound to the context at turn start and
   then run **unchanged** — one loop per agent. This is the near-term
-  **chosen** approach, now spec'd: [agent-graph.md](agent-graph.md).
+  **chosen** approach, now built (backend + panel):
+  [agent-graph.md](agent-graph.md).
   **Deferred = the nested/routed reading**: the agent graph sequencing or
   fanning out *multiple* sub-graphs with `route` as the inter-agent
   dispatcher (serial handoff) — the larger contract extension, named not

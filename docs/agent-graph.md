@@ -1,6 +1,11 @@
 # Agent graph: the capability-composition layer above the loop
 
-**Status:** design — decisions frozen for v1, not yet built.
+**Status:** implemented (v1) — contract, store + `/api/agents` door, the
+MCP client/adapter/pool, bind-then-run (model/MCP/skills/persona onto the
+existing seams, visible-failure model), and the panel's list/enable/test
+surface are built (build order 1–5 + the ComponentPanel half of 6). The
+designer *capability node* (the other half of build order 6) remains on
+the roadmap — the document is the source of truth for it.
 **Date:** 2026-10-13 — Supersedes: the "agent groups" note in
 [ai-routing-nodes.md](ai-routing-nodes.md#out-of-scope-for-this-branch)
 (the *nested/routed* reading of it, which is deferred here).
@@ -178,7 +183,7 @@ the declared tools. It is deliberately a *separate* mechanism from the
 | Bind to context | [`main.py::get_registry()`](../app/main.py) + [`agent.py::_snapshot_components`](../app/agent.py): the active agent doc feeds `ComponentContext` + the per-turn snapshot |
 | Persona override | `AgentRuntime` reads [`agent_config.py::agent_path`](../app/agent_config.py) at construction and `build_agent()` runs **per turn** in `/api/chat` — so `prompt` + `skill[]` land as the composed persona by pointing `agent_path` at it; no read-path change |
 | Tool merge | `ToolRegistry` in the context; MCP adapter registers like any `@tool` in [`ALL_TOOLS`](../app/main.py) |
-| Discovery door | `GET /api/agents` (+ `/{id}`, DELETE, `/{id}/activate`); `describe()` gains an **`agents`** block, parallel to its `graphs` block |
+| Discovery door | `GET /api/agents` (+ `/{id}`, DELETE, `/{id}/activate`, `/{id}/mcp/test` — the panel's "test" opens a fresh connection and lists the advertised tools); `describe()` gains an **`agents`** block, parallel to its `graphs` block |
 | MCP adapter | new `app/mcp/` (`client.py`, `adapter.py`, `pool.py`) |
 | Config surface (frontend) | a ComponentPanel-style list/enable/test for MCP + a capability node on the [designer](../designer/) canvas, `loop` ref expandable into the turn-graph |
 
@@ -243,18 +248,27 @@ the declared tools. It is deliberately a *separate* mechanism from the
 ## Build order
 
 1. `schemas/agent.py` validator **first** (red → green, fakes), with the
-   closed-vocab rules above.
+   closed-vocab rules above. *(done — `6b35466`)*
 2. `components/agent_store.py` + `server.py` `/api/agents` CRUD + activation
    + the `agents` block in `describe()`; fake tests (invalid ⇒ 400; activate
-   flips active).
+   flips active). *(done — `470cd0b`)*
 3. `app/mcp/adapter.py` + `pool.py` with a **fake MCP server** (no real
-   binary); pin "bind merges tools" and "no per-turn spawn".
+   binary); pin "bind merges tools" and "no per-turn spawn". *(done —
+   `6e32c74`)*
 4. Bind path in `main.py::get_registry` / `agent.py`; `prompt`/`model`/
    `settings` feeding the context + snapshot; fake-driven "bind then run".
-5. Skills: bind injects persona fragment + registers a fake tool.
+   *(done — `889cbe5`: `components/agent_bind.py` + `registry.rebuild()` +
+   the activation route's bind-first 400 + the per-turn lazy hook in
+   `build_agent()`)*
+5. Skills: bind injects persona fragment + registers a fake tool. *(done —
+   same commit; the skill fragment composes the persona and its declared
+   tools must resolve at bind time)*
 6. Config surface: ComponentPanel list/enable/**test** MCP; designer
-   capability node with `loop` ref expandable.
-7. Docs cross-refs + `app/memory/architecture.md` refinement.
+   capability node with `loop` ref expandable. *(half done — `84e29cc`:
+   the panel half, incl. `POST /api/agents/{id}/mcp/test`; the designer
+   node remains)*
+7. Docs cross-refs + `app/memory/architecture.md` refinement. *(in flight —
+   this status line + README + the memory refinement)*
 
 ## Why
 
