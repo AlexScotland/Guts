@@ -327,7 +327,7 @@ Invariants — the node is a **design-layer concern, not a slot**:
    wiring (add an agent node; open a saved agent from the library; rename;
    dirty = draft-vs-saved diff; the in-flight action per node); the
    "add agent" entry in the Palette and the library's "+ new" / "edit on
-   canvas →". *(done — `09511cd`: `agentNode.ts` + tests, `AgentCard`/
+   canvas →". *(done — `d68b903`: `agentNode.ts` + tests, `AgentCard`/
    `AgentPanel`, the `Canvas` agent layer, the `page.tsx` wiring, the
    `Palette`/`AgentLibrary` entry points, the `api.ts` door client)*
 
