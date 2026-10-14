@@ -23,6 +23,8 @@ Exposes:
   GET  /api/agents/{id}       — fetch one saved document (designer render)
   DELETE /api/agents/{id}     — delete a saved agent document
   POST /api/agents/{id}/activate — make a saved agent the ACTIVE one
+  POST /api/agents/{id}/mcp/test — test one declared MCP connection (list,
+                                   enable, test from the component panel)
   GET  /health                — liveness probe
 """
 
@@ -114,6 +116,13 @@ class AgentSaveRequest(BaseModel):
             "closed vocabulary, persona + model + mcp[] + skill[] + settings + "
             "exactly one loop child)."
         ),
+    )
+
+
+class McpTestRequest(BaseModel):
+    alias: str = Field(
+        ..., min_length=1, max_length=128,
+        description="An mcp alias declared in this agent document (the one to test).",
     )
 
 
@@ -354,6 +363,52 @@ def activate_agent(agent_id: str):
     except (KeyError, AgentError) as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     return describe_agents(store)
+
+
+@app.post("/api/agents/{agent_id}/mcp/test")
+def test_agent_mcp(agent_id: str, req: McpTestRequest):
+    """Test one MCP connection this agent declares (the panel's "test").
+
+    A GENUINE connection check (docs/agent-graph.md §Build order 6): the
+    shared pool's entry for the alias is reset — trust nothing cached — the
+    spec from THIS agent document is registered, and tools/list must
+    actually answer. An unreachable server is a VISIBLE 400 with the
+    connection's own error, never a silent pass. Testing also leaves the
+    pool pointed at THIS spec for the alias (the alias is a process-global
+    namespace; a re-activation re-binds its own spec, so nothing can be
+    served that the document did not declare).
+    """
+    store = get_agent_store()
+    try:
+        doc = store.get(agent_id)
+    except (KeyError, AgentError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    declared = {entry.get("alias"): entry for entry in (doc.get("mcp") or [])}
+    if req.alias not in declared:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"agent {agent_id!r} declares no mcp alias {req.alias!r} "
+                f"(declared: {', '.join(sorted(declared)) or 'none'})"
+            ),
+        )
+    from components.agent_bind import get_mcp_pool
+    from mcp import McpError, McpPoolError
+
+    spec = declared[req.alias]
+    pool = get_mcp_pool()
+    try:
+        pool.reset(req.alias)  # a test must re-earn the connection
+        pool.set(req.alias, spec)
+        tools = pool.tools(req.alias)
+    except (McpError, McpPoolError, RuntimeError, OSError) as exc:
+        raise HTTPException(status_code=400, detail=f"mcp[{req.alias}] not reachable: {exc}")
+    return {
+        "alias": req.alias,
+        "transport": spec.get("transport"),
+        "detail": f"connected — {len(tools)} tool(s) advertised",
+        "tools": [tool.name for tool in tools],
+    }
 
 
 @app.get("/health", response_model=HealthResponse)

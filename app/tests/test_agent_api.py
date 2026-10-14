@@ -336,6 +336,119 @@ def test_activate_mcp_unreachable_is_a_visible_bind_failure(agent_client):
     assert client.get("/api/agents").json()["active"] == "ok"
 
 
+# ── /api/agents/{id}/mcp/test — the panel's "test" door ─────────────────────
+
+
+class _FakePoolOk:
+    """A pool that answers a reset + set + tools/list with one real tool."""
+
+    def __init__(self):
+        self._tool = _FakeTool("echo", "echo its args")
+
+    def reset(self, alias):
+        pass
+
+    def set(self, alias, spec):
+        pass
+
+    def tools(self, alias):
+        return [self._tool]
+
+
+class _FakePoolFail:
+    """A pool whose tools/list blows up — the visible 400 pin."""
+
+    def reset(self, alias):
+        pass
+
+    def set(self, alias, spec):
+        pass
+
+    def tools(self, alias):
+        import mcp
+
+        raise mcp.McpError("fake server refused tools/list")
+
+
+def _FakeTool(name, description):
+    # A duck of mcp.McpTool (only .name is read by the endpoint).
+    class _T:
+        def __init__(self):
+            self.name = name
+            self.description = description
+
+    return _T()
+
+
+def test_mcp_test_reports_live_tools(agent_client, monkeypatch):
+    import components.agent_bind as agent_bind
+
+    monkeypatch.setattr(agent_bind, "get_mcp_pool", lambda: _FakePoolOk())
+    client, _ = agent_client
+    client.post(
+        "/api/agents",
+        json={
+            "id": "m",
+            "agent": {
+                "loop": {"alias": "direct"},
+                "mcp": [{"alias": "web", "transport": "http", "url": "http://fake"}],
+            },
+        },
+    )
+    res = client.post("/api/agents/m/mcp/test", json={"alias": "web"})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["alias"] == "web"
+    assert body["tools"] == ["echo"]
+    assert "tool" in body["detail"].lower()
+
+
+def test_mcp_test_unreachable_is_a_visible_400(agent_client, monkeypatch):
+    import components.agent_bind as agent_bind
+
+    monkeypatch.setattr(agent_bind, "get_mcp_pool", lambda: _FakePoolFail())
+    client, _ = agent_client
+    client.post(
+        "/api/agents",
+        json={
+            "id": "d",
+            "agent": {
+                "loop": {"alias": "direct"},
+                "mcp": [{"alias": "web", "transport": "http", "url": "http://127.0.0.1:1"}],
+            },
+        },
+    )
+    res = client.post("/api/agents/d/mcp/test", json={"alias": "web"})
+    assert res.status_code == 400
+    assert "not reachable" in res.json()["detail"]
+
+
+def test_mcp_test_unknown_alias_is_a_400(agent_client, monkeypatch):
+    import components.agent_bind as agent_bind
+
+    monkeypatch.setattr(agent_bind, "get_mcp_pool", lambda: _FakePoolOk())
+    client, _ = agent_client
+    client.post(
+        "/api/agents",
+        json={
+            "id": "m",
+            "agent": {
+                "loop": {"alias": "direct"},
+                "mcp": [{"alias": "web", "transport": "http", "url": "http://fake"}],
+            },
+        },
+    )
+    res = client.post("/api/agents/m/mcp/test", json={"alias": "ghost"})
+    assert res.status_code == 400
+    assert "declares no mcp alias" in res.json()["detail"]
+
+
+def test_mcp_test_unknown_agent_is_404(agent_client):
+    client, _ = agent_client
+    res = client.post("/api/agents/nobody/mcp/test", json={"alias": "web"})
+    assert res.status_code == 404
+
+
 def test_describe_carries_agents_block_parallel_to_graphs(agent_client):
     client, store = agent_client
     client.post("/api/agents", json={"id": "a", "name": "A", "agent": _valid_agent()})

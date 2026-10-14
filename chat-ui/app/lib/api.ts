@@ -1,10 +1,13 @@
 import {
   ApiError,
   type ActivateComponentsRequest,
+  type AgentDetail,
+  type AgentsStatus,
   type ChatRequest,
   type ChatResponse,
   type ComponentsStatus,
   type ConversationTurn,
+  type McpTestResult,
 } from "./types";
 
 /** Backend base URL. Default (empty) → relative, proxied by this server
@@ -131,6 +134,81 @@ export async function activateComponents(
   } catch {
     throw new ApiError("parse", "Backend returned an unreadable component status.");
   }
+}
+
+/* ── Agent graphs (the capability-composition document) ─────────────────── */
+
+async function agentRequest<T>(
+  path: string,
+  init?: RequestInit
+): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      ...init,
+      cache: "no-store",
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    throw new ApiError("network", "Could not reach the AI backend. Is it running?");
+  }
+
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const data = await res.json();
+      detail = (data.detail || data.message || "").toString().slice(0, 300);
+    } catch {
+      try {
+        detail = (await res.text()).slice(0, 300);
+      } catch {
+        /* no body */
+      }
+    }
+    throw new ApiError(
+      "http",
+      detail.length ? `Backend error ${res.status}: ${detail}` : `Backend error ${res.status}`,
+      res.status
+    );
+  }
+
+  try {
+    return (await res.json()) as T;
+  } catch {
+    throw new ApiError("parse", "Backend returned an unreadable response.");
+  }
+}
+
+/** List the saved agent documents + which one is active. */
+export async function getAgents(): Promise<AgentsStatus> {
+  return agentRequest<AgentsStatus>("/api/agents");
+}
+
+/** Fetch one saved agent document by id (id + name + full document). */
+export async function getAgent(agentId: string): Promise<AgentDetail> {
+  return agentRequest<AgentDetail>(`/api/agents/${encodeURIComponent(agentId)}`);
+}
+
+/** Make a saved agent the ACTIVE one. Returns the refreshed list. */
+export async function activateAgent(agentId: string): Promise<AgentsStatus> {
+  return agentRequest<AgentsStatus>(`/api/agents/${encodeURIComponent(agentId)}/activate`, {
+    method: "POST",
+  });
+}
+
+/** Test one MCP connection an agent declares (the panel's "test" door). */
+export async function testAgentMcp(
+  agentId: string,
+  alias: string
+): Promise<McpTestResult> {
+  return agentRequest<McpTestResult>(
+    `/api/agents/${encodeURIComponent(agentId)}/mcp/test`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ alias }),
+    }
+  );
 }
 
 /** Liveness probe for the connection indicator. Resolves to a boolean. */

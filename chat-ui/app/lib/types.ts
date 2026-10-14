@@ -50,6 +50,63 @@ export interface ActivateComponentsRequest {
   alias?: string;
 }
 
+/* ── Agent graphs (capability-composition docs, backend /api/agents) ── */
+
+/** One line per saved agent document (the family shape of /api/agents). */
+export interface AgentMeta {
+  id: string;
+  name: string;
+  active: boolean;
+  loop?: string;
+  model?: string | null;
+  /** mcp[] aliases the document declares. */
+  mcp: string[];
+  /** skill[] paths. */
+  skills: string[];
+  has_prompt: boolean;
+  settings: Record<string, string>;
+}
+
+/** GET /api/agents (and POST/DELETE/activate): active id + one line each. */
+export interface AgentsStatus {
+  active: string | null;
+  agents: AgentMeta[];
+}
+
+/** One mcp[] entry of an agent document. */
+export interface AgentMcpEntry {
+  alias: string;
+  transport?: string;
+  url?: string;
+  command?: string[];
+}
+
+/** The full agent document (GET /api/agents/{id} → .agent). */
+export interface AgentDocument {
+  name?: string;
+  prompt?: string;
+  model?: { provider?: string; id?: string };
+  mcp?: AgentMcpEntry[];
+  skill?: { path: string; tools?: string[] }[];
+  settings?: Record<string, string>;
+  loop?: { ref?: string; alias?: string };
+}
+
+/** GET /api/agents/{id}. */
+export interface AgentDetail {
+  id: string;
+  name: string;
+  agent: AgentDocument;
+}
+
+/** POST /api/agents/{id}/mcp/test — the panel's "test" door. */
+export interface McpTestResult {
+  alias: string;
+  transport?: string;
+  detail: string;
+  tools: string[];
+}
+
 /** Thrown by the api client for any non-2xx or network failure. */
 export class ApiError extends Error {
   readonly kind: "network" | "http" | "parse";
