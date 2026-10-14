@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Header from "./components/Header";
 import Toolbar from "./components/Toolbar";
 import Canvas, { type Selection } from "./components/Canvas";
+import AgentLibrary from "./components/AgentLibrary";
 import GraphLibrary from "./components/GraphLibrary";
 import Palette from "./components/Palette";
 import Inspector from "./components/Inspector";
@@ -15,6 +16,7 @@ import {
   deleteGraph,
   getComponents,
   getGraph,
+  getAgents,
   getGraphs,
   getLastRun,
   isBackendOnline,
@@ -38,6 +40,8 @@ import {
   type PrimitiveMeta,
 } from "./lib/graph";
 import type {
+  AgentMeta,
+  AgentsStatus,
   BranchSpec,
   GraphMeta,
   LastRun,
@@ -99,6 +103,10 @@ export default function Page() {
   const [graphs, setGraphs] = useState<GraphMeta[] | null>(null);
   const [activeGraph, setActiveGraph] = useState<string | null>(null);
   const [activeLoop, setActiveLoop] = useState<string | null>(null);
+
+  // The layer above (docs/agent-graph.md): saved capability-composition docs.
+  const [agents, setAgents] = useState<AgentMeta[] | null>(null);
+  const [activeAgent, setActiveAgent] = useState<string | null>(null);
 
   const [graph, setGraph] = useState<CanvasGraph>(() => seedGraph("my-loop"));
   const [baseline, setBaseline] = useState<string>(() =>
@@ -200,6 +208,13 @@ export default function Page() {
       setActiveGraph(g.active);
     } catch {
       /* keep whatever we have */
+    }
+    try {
+      const a = await getAgents();
+      setAgents(a.agents);
+      setActiveAgent(a.active);
+    } catch {
+      /* pre-agent backend — the panel shows its offline/empty state */
     }
   }, []);
 
@@ -552,6 +567,12 @@ export default function Page() {
 
       <div className={styles.body}>
         <aside className={styles.left}>
+          <AgentLibrary
+            agents={agents}
+            activeId={activeAgent}
+            online={online === true}
+            onOpenLoop={(id) => loadGraph(id)}
+          />
           <GraphLibrary
             graphs={graphs}
             active={activeGraph}

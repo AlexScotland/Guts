@@ -1,0 +1,254 @@
+.library {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 0 1 auto;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg-soft);
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 10px 14px 6px;
+}
+
+.title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.hint {
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  opacity: 0.8;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+.entry {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: 7px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  position: relative;
+}
+
+.item:hover {
+  border-color: var(--accent);
+}
+
+.current {
+  border-color: color-mix(in srgb, var(--accent) 65%, transparent);
+  background: color-mix(in srgb, var(--accent-soft) 45%, var(--surface));
+}
+
+.expanded {
+  border-color: var(--accent);
+}
+
+.name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sub {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.star {
+  position: absolute;
+  top: 6px;
+  right: 18px;
+  color: var(--ok);
+  font-size: 11px;
+}
+
+.chev {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.bundle {
+  margin: 2px 0 2px 6px;
+  padding: 8px 10px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  background: var(--bg-soft);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.row {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.tag,
+.tagLoop {
+  flex: 0 0 auto;
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  padding: 0 6px;
+}
+
+.tagLoop {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.value {
+  min-width: 0;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.faint {
+  color: var(--text-faint);
+}
+
+.loop {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.loopToggle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  font-size: 11px;
+  position: relative;
+}
+
+.loopToggle:hover {
+  border-color: var(--accent);
+}
+
+.loopToggle .chev {
+  position: absolute;
+  right: 6px;
+  top: 7px;
+}
+
+.loopGraph {
+  padding: 6px 8px;
+  background: var(--surface);
+  border: 1px dashed var(--border-soft);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.nodeChip {
+  font-size: 10.5px;
+  color: var(--text);
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.nodeChip b {
+  font-weight: 650;
+}
+
+.loopEdgeCount {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.openLoop {
+  width: 100%;
+  margin-top: 2px;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: transparent;
+  border: 1px dashed color-mix(in srgb, var(--accent) 50%, transparent);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.openLoop:hover {
+  background: var(--accent-soft);
+}
+
+.note,
+.error {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.note {
+  color: var(--text-faint);
+}
+
+.error {
+  color: var(--error);
+}
+
+.note,
+.emptyNote {
+  padding: 4px 2px;
+}

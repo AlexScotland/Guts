@@ -1,11 +1,13 @@
 # Agent graph: the capability-composition layer above the loop
 
-**Status:** implemented (v1) — contract, store + `/api/agents` door, the
+**Status:** implemented (v1) — contract, store + the `/api/agents` door, the
 MCP client/adapter/pool, bind-then-run (model/MCP/skills/persona onto the
-existing seams, visible-failure model), and the panel's list/enable/test
-surface are built (build order 1–5 + the ComponentPanel half of 6). The
-designer *capability node* (the other half of build order 6) remains on
-the roadmap — the document is the source of truth for it.
+existing seams, visible-failure model), the chat panel's list/enable/test MCP
+surface, **and the designer's read-only Agents library** (one line per agent;
+the bundle's shape on expand; the `loop` ref expandable into the referenced
+turn-graph, "open in canvas"). Build order 1–7 is complete; this document
+stays the source of truth for v1 — and names what comes next (the nested/routed
+reading) as the roadmap.
 **Date:** 2026-10-13 — Supersedes: the "agent groups" note in
 [ai-routing-nodes.md](ai-routing-nodes.md#out-of-scope-for-this-branch)
 (the *nested/routed* reading of it, which is deferred here).
@@ -185,7 +187,7 @@ the declared tools. It is deliberately a *separate* mechanism from the
 | Tool merge | `ToolRegistry` in the context; MCP adapter registers like any `@tool` in [`ALL_TOOLS`](../app/main.py) |
 | Discovery door | `GET /api/agents` (+ `/{id}`, DELETE, `/{id}/activate`, `/{id}/mcp/test` — the panel's "test" opens a fresh connection and lists the advertised tools); `describe()` gains an **`agents`** block, parallel to its `graphs` block |
 | MCP adapter | new `app/mcp/` (`client.py`, `adapter.py`, `pool.py`) |
-| Config surface (frontend) | a ComponentPanel-style list/enable/test for MCP + a capability node on the [designer](../designer/) canvas, `loop` ref expandable into the turn-graph |
+| Config surface (frontend) | the chat panel's ComponentPanel-style list/enable/**test** MCP, plus the [designer](../designer/)'s read-only **Agents library** — one line per agent, the bundle's shape on expand, and the `loop` ref expandable into the referenced turn-graph ("open in canvas"); `designer/app/components/AgentLibrary.tsx` + `lib/agents.ts` |
 
 ## Validator rules (`app/schemas/agent.py` — `validate_agent(doc) → AgentDoc`, pure/stdlib)
 
@@ -263,12 +265,13 @@ the declared tools. It is deliberately a *separate* mechanism from the
 5. Skills: bind injects persona fragment + registers a fake tool. *(done —
    same commit; the skill fragment composes the persona and its declared
    tools must resolve at bind time)*
-6. Config surface: ComponentPanel list/enable/**test** MCP; designer
-   capability node with `loop` ref expandable. *(half done — `84e29cc`:
-   the panel half, incl. `POST /api/agents/{id}/mcp/test`; the designer
-   node remains)*
-7. Docs cross-refs + `app/memory/architecture.md` refinement. *(in flight —
-   this status line + README + the memory refinement)*
+6. Config surface: ComponentPanel list/enable/**test** MCP; the designer's
+   read-only Agents library with `loop` ref expandable. *(done — `84e29cc`
+   the panel half incl. `POST /api/agents/{id}/mcp/test`; `AgentLibrary.tsx`
+   + `lib/agents.ts` + `agents.test.mjs` the designer surface: one line per
+   agent, the bundle's shape, the loop ref expandable with "open in canvas")*
+7. Docs cross-refs + `app/memory/architecture.md` refinement. *(done — this
+   status line, the README feature blurb + docs list, and the memory entry)*
 
 ## Why
 

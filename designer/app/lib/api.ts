@@ -14,6 +14,8 @@
 
 import {
   ApiError,
+  type AgentDetail,
+  type AgentsStatus,
   type ComponentsStatus,
   type GraphDoc,
   type GraphsStatus,
@@ -209,6 +211,32 @@ export async function postChat(
     guardNetwork(err, "Could not reach the AI backend. Is it running?");
   }
   return handle(res, (b) => String((b as { answer?: string }).answer ?? "").trim() || "No response received.");
+}
+
+/* ── Agent graphs (the capability-composition doc, docs/agent-graph.md) ─── */
+
+/** GET /api/agents — saved agent documents (active + one line each). */
+export async function getAgents(): Promise<AgentsStatus> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/agents`, { cache: "no-store" });
+  } catch (err) {
+    guardNetwork(err, "Could not reach the AI backend. Is it running?");
+  }
+  return handle(res, (b) => b as AgentsStatus);
+}
+
+/** GET /api/agents/{id} — the full document (for the capability node view). */
+export async function getAgent(id: string): Promise<AgentDetail> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/agents/${encodeURIComponent(id)}`, {
+      cache: "no-store",
+    });
+  } catch (err) {
+    guardNetwork(err, "Could not reach the AI backend. Is it running?");
+  }
+  return handle(res, (b) => b as AgentDetail);
 }
 
 /** GET /health — the connection indicator. */

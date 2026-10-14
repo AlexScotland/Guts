@@ -122,6 +122,52 @@ export interface LastRun {
   events: RunEvent[];
 }
 
+/* ── Agent graphs (capability-composition docs, backend /api/agents) ──
+ *  The designer renders the LAYER ABOVE (docs/agent-graph.md): one line per
+ *  agent + the bundle's shape + the loop reference expandable into the
+ *  referenced turn-graph. The backend is the authority for validation. */
+
+export interface AgentMeta {
+  id: string;
+  name: string;
+  active: boolean;
+  /** loop: a saved graph id (ref) or a built-in loop alias. */
+  loop?: string;
+  model?: string | null;
+  mcp: string[];
+  skills: string[];
+  has_prompt: boolean;
+  settings: Record<string, string>;
+}
+
+export interface AgentsStatus {
+  active: string | null;
+  agents: AgentMeta[];
+}
+
+export interface AgentMcpEntry {
+  alias: string;
+  transport?: string;
+  url?: string;
+  command?: string[];
+}
+
+export interface AgentDocument {
+  name?: string;
+  prompt?: string;
+  model?: { provider?: string; id?: string };
+  mcp?: AgentMcpEntry[];
+  skill?: { path: string; tools?: string[] }[];
+  settings?: Record<string, string>;
+  loop?: { ref?: string; alias?: string };
+}
+
+export interface AgentDetail {
+  id: string;
+  name: string;
+  agent: AgentDocument;
+}
+
 export class ApiError extends Error {
   kind: "network" | "http" | "parse";
   status?: number;

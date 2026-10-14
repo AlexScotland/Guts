@@ -74,6 +74,15 @@ Edges are either **data** (typed against provides/needs, must be acyclic) or
 (`app/schemas/graph.py` — pure, no LLM, no I/O), a document that cannot be
 validated cannot be saved, activated, or executed.
 
+**Agents** (a document, the *layer above* the loop) — a *specialist* is a second
+document: a capability bundle — an optional model, a set of MCP tool servers, a
+set of skills, an optional persona, and settings overrides — around **exactly
+one** `loop` child (a saved graph id or a built-in alias). Bind the bundle at
+turn start and run the existing loop **unchanged**, so "a different agent = a
+different model/MCP/skills/flow" is a *validated document + activate*, not an
+edit-and-restart. Contract and the full surface (chat panel + read-only designer
+Agents library): [agent-graph.md](docs/agent-graph.md).
+
 ## Six samples that walk the contract
 
 `app/graphs/sample-*.json` — each file adds exactly one more contract feature
@@ -214,8 +223,8 @@ docs/         the tutorial + the design docs; the graph contract and its
                agent-graph.md          (layer above: the agent as a
                                        capability-composition doc — model +
                                        MCP + skills + exactly one loop;
-                                       implemented — the designer node
-                                       stays on the roadmap)
+                                       implemented (v1), incl. the
+                                       designer's read-only Agents library)
 ```
 
 ## Design principles

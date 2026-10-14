@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "node --experimental-strip-types --no-warnings --test app/lib/run.test.mjs app/lib/graph.test.mjs"
+    "test": "node --experimental-strip-types --no-warnings --test app/lib/run.test.mjs app/lib/graph.test.mjs app/lib/agents.test.mjs"
   },
   "dependencies": {
     "next": "^15.5.23",
