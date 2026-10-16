@@ -1,27 +1,9 @@
-```text
-                                                             _       _
-                                                            / \     / \
-                                                           {   }   {   }
-                                                           {   {   }   }
-                                                            \   \ /   /
-                                                             \   Y   /
-                                                             .-"`"`"-.
-                                                           ,`         `.
-                                                          /             \
-                                                         /               \
-                                                        {     ;"";,       }
-                                                        {  /";`'`,;       }
-                                                         \{  ;`,'`;.     /
-                                                          {  }`""`  }   /}
-                                                          {  }      {  //  
-                                                          {||}      {  /
-                                                          `"'       `"'                                                         
-                                                               Guts
-                                    An LLM agent harness where the agent loop is *data*, not code.
 
-```
-<img src='docs/gif/mkt-01.gif' />
-
+<div align="center">
+<img src="assets/img/guts-logo.png" width="120" alt="Guts" />
+<br />
+<h1>Guts</h1>
+</div>
 <div align="center">
   <a href="#getting-started">Quick Start</a> ·
   <a href="docs/tutorial.md">Tutorial</a> ·
@@ -29,7 +11,6 @@
   <a href="#contributing">Contributing</a>
 </div>
 
-# Guts
 A single Python backend ("the harness") owns one engine and exposes it through
 stable, hot-swappable **component slots**; the *topology* of a turn — which
 roles run, in what order, with what branches and retries — is declared as a
@@ -307,3 +288,23 @@ docs/         the tutorial + the design docs; the graph contract and its
   in the registry, extend `PRIMITIVES` in `app/schemas/graph.py`, add
   fakes + tests, and add a sample graph that exercises it.
 - Docs first: if it changes the contract, it gets a `docs/*.md` entry.
+
+```text
+                                                             _       _
+                                                            / \     / \
+                                                           {   }   {   }
+                                                           {   {   }   }
+                                                            \   \ /   /
+                                                             \   Y   /
+                                                             .-"`"`"-.
+                                                           ,`         `.
+                                                          /             \
+                                                         /               \
+                                                        {     ;"";,       }
+                                                        {  /";`'`,;       }
+                                                         \{  ;`,'`;.     /
+                                                          {  }`""`  }   /}
+                                                          {  }      {  //  
+                                                          {||}      {  /
+                                                          `"'       `"'                                                         
+```
