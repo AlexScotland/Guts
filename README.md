@@ -144,7 +144,7 @@ docker compose up --build
 | Surface  | URL                          |
 |----------|------------------------------|
 | Loop Designer (canvas) | http://localhost:3020 |
-| Chat UI  | http://localhost:3010        |
+| Chat UI (WIP)  | http://localhost:3010        |
 | API      | http://localhost:8000        |
 | SearXNG (web search)   | http://localhost:8080        |
 
