@@ -31,16 +31,18 @@ toolset or missing persona. The run phase is untouched: the existing
 per-turn snapshot (``_snapshot_components`` → ``loop.run``) proceeds
 byte-for-byte as today; a bind made mid-turn lands on the NEXT turn.
 
-Detach (the delete path)
-------------------------
+Detach (the delete + deactivate paths)
+--------------------------------------
 A bind mutates PROCESS-SHARED state (the registry's loop slot, the graph
 store's active id, ``context.llm``, the shared ToolRegistry, slot aliases,
 the persona path). Deleting the bound agent therefore must UNDO exactly
 that: every bind goes through :func:`bind_and_remember` (captures the
 pre-bind snapshot), and :func:`detach_agent` (delete route) /
-:func:`ensure_agent_bound` (every other path) restore it. A deleted agent
-never keeps running the next turn — its loop, model, MCP tools, settings
-and persona all go back to the pre-bind pipeline.
+:func:`deactivate_agent` (deactivate route) / :func:`ensure_agent_bound`
+(every other path) restore it. A deleted agent — or a deactivated one,
+whose document stays saved — never keeps running the next turn: its loop,
+model, MCP tools, settings and persona all go back to the pre-bind
+pipeline.
 """
 from __future__ import annotations
 
@@ -540,6 +542,24 @@ def detach_agent(registry: ComponentRegistry, agent_id: str, *, pool: McpPool | 
     """
     state = _extras(registry.context).get(_EXTRAS_BIND_STATE)
     if not state or state.get("agent") != agent_id:
+        return False
+    restore_active_agent(registry, state, pool=pool, graph_store=graph_store)
+    return True
+
+
+def deactivate_agent(registry: ComponentRegistry, *, pool: McpPool | None = None, graph_store=None) -> bool:
+    """The deactivate door: roll WHATEVER is currently bound back to its
+    pre-bind snapshot — the document stays saved (contrast the delete
+    door's :func:`detach_agent`, which additionally requires the bound
+    agent to be exactly the one being deleted).
+
+    Same single-level undo as the delete path: the restore target is the
+    snapshot captured immediately BEFORE this agent's bind, MCP bookkeeping
+    and the bind-state record are always cleared, and the call is idempotent
+    (no bind state ⇒ a no-op). Returns True when a bind was rolled back
+    (API + tests)."""
+    state = _extras(registry.context).get(_EXTRAS_BIND_STATE)
+    if not state:
         return False
     restore_active_agent(registry, state, pool=pool, graph_store=graph_store)
     return True

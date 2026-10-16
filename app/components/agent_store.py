@@ -18,7 +18,8 @@ stays pure/stdlib, the frozen rule):
 Unlike the graph store there is NO run tracking: an agent binds-then-runs
 the EXISTING loop, so last-run evidence stays on the graph side (the loop
 is where runs happen). The store's job is the document family: save,
-fetch, list, activate — exactly the graph store's shape.
+fetch, list, activate, deactivate (clear_active) — exactly the graph
+store's shape.
 """
 import json
 import os
@@ -192,6 +193,18 @@ class AgentStore:
                 raise AgentError(f"cannot activate unknown agent {agent_id!r}")
             self._active_id = agent_id
             self._persist_active()
+
+    def clear_active(self) -> bool:
+        """Deactivate WITHOUT deleting (the deactivate door): the active
+        pointer goes away, the document stays saved. Returns True when an id
+        WAS active (the caller then rolls the bound state back); False is a
+        no-op (nothing was active)."""
+        with self._lock:
+            if self._active_id is None:
+                return False
+            self._active_id = None
+            self._persist_active()
+            return True
 
     # ── introspection ────────────────────────────────────────────
 

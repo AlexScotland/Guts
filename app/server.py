@@ -23,6 +23,7 @@ Exposes:
   GET  /api/agents/{id}       — fetch one saved document (designer render)
   DELETE /api/agents/{id}     — delete a saved agent document
   POST /api/agents/{id}/activate — make a saved agent the ACTIVE one
+  POST /api/agents/deactivate   — clear the ACTIVE one (the document stays)
   POST /api/agents/{id}/mcp/test — test one declared MCP connection (list,
                                    enable, test from the component panel)
   GET  /health                — liveness probe
@@ -47,7 +48,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai-backend")
 
 app = FastAPI(
-    title="learning-ai-harness API",
+    title="GUTS API",
     description="Stateless HTTP interface for the AI assistant agent",
     version="1.1.0",
 )
@@ -493,6 +494,27 @@ def activate_agent(agent_id: str):
         store.set_active(agent_id)
     except (KeyError, AgentError) as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    return describe_agents(store)
+
+
+@app.post("/api/agents/deactivate")
+def deactivate_active_agent():
+    """Clear the ACTIVE agent WITHOUT deleting its document.
+
+    The deactivate door: the store's active pointer goes away and the live
+    bind rolls back to the pre-bind snapshot (the same single-level undo the
+    delete door performs) — loop slot + active graph, model (+ rebuild),
+    MCP adapters, settings slots, persona. The saved document survives and
+    can be re-activated at any time, and the NEXT /api/chat turn runs the
+    pre-bind pipeline (per-turn-snapshot semantics, no restart). Idempotent:
+    with nothing active and nothing bound this is a 200 no-op. Returns the
+    family shape ``{active, agents: [...]}`` — active is now null.
+    """
+    store = get_agent_store()
+    store.clear_active()
+    from components.agent_bind import deactivate_agent
+
+    deactivate_agent(get_registry(), graph_store=get_graph_store())
     return describe_agents(store)
 
 

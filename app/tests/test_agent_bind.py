@@ -44,6 +44,7 @@ from components import (
     ComponentSlot,
     bind_agent,
     bind_and_remember,
+    deactivate_agent,
     detach_agent,
     ensure_agent_bound,
     register_builtin_components,
@@ -504,6 +505,75 @@ def test_detach_restores_the_full_pre_bind_state(harness):
     # idempotent: nothing left to roll back
     assert detach_agent(registry, "researcher", pool=pool, graph_store=graphs) is False
     pool.drain()
+
+
+def test_deactivate_rolls_back_whatever_is_bound(harness):
+    """The deactivate door at the bind seam (contrast the delete path): it
+    rolls WHATEVER is bound back to the pre-bind snapshot — the store is not
+    involved here, so the document question is out of scope — and a second
+    call is a no-op while the same bind can be redone afterwards."""
+    registry, context, tools, graphs = (
+        harness["registry"], harness["context"], harness["tools"], harness["graphs"],
+    )
+    pool = harness["pool"]()
+    default_llm = context.llm
+    default_agent_path = context.config.agent_path
+    doc = {
+        "prompt": "You are a research specialist. Cite sources.",
+        "loop": {"ref": "killer-research"},
+        "model": {"provider": "ollama", "id": "qwen:latest"},
+        "mcp": [{"alias": "web", "transport": "http", "url": "http://fake"}],
+        "skill": [{"path": "citation.md"}],
+        "settings": {"memory": "trimmed"},
+    }
+    bind_and_remember(
+        registry,
+        doc,
+        agent_id="researcher",
+        pool=pool,
+        model_factory=lambda spec: FakeModel(spec.get("id")),
+        skill_root=harness["root"],
+        persona_dir=os.path.join(harness["root"], "persona"),
+    )
+    assert registry.active_alias(ComponentSlot.LOOP) == "graph"
+    assert graphs.active_id == "killer-research"
+    assert context.llm is not default_llm
+    assert "mcp_web_echo" in tools.names()
+    assert registry.active_alias(ComponentSlot.MEMORY) == "trimmed"
+
+    # deactivate: same single-level undo as the delete path — no id needed
+    assert deactivate_agent(registry, pool=pool, graph_store=graphs) is True
+    assert registry.active_alias(ComponentSlot.LOOP) == "plan_execute"  # pre-bind alias
+    assert graphs.active_id is None  # pre-bind active graph
+    assert context.llm is default_llm
+    assert registry.active(ComponentSlot.EXECUTOR).llm is default_llm  # rebuilt
+    assert "mcp_web_echo" not in tools.names()
+    assert registry.active_alias(ComponentSlot.MEMORY) == "default"  # pre-bind alias
+    assert context.config.agent_path == default_agent_path
+    # idempotent: nothing left to roll back
+    assert deactivate_agent(registry, pool=pool, graph_store=graphs) is False
+    # ...and the same bind can run again (deactivate is not a one-shot latch)
+    bind_and_remember(
+        registry,
+        doc,
+        agent_id="researcher",
+        pool=pool,
+        model_factory=lambda spec: FakeModel(spec.get("id")),
+        skill_root=harness["root"],
+        persona_dir=os.path.join(harness["root"], "persona"),
+    )
+    assert registry.active_alias(ComponentSlot.LOOP) == "graph"
+    assert deactivate_agent(registry, pool=pool, graph_store=graphs) is True
+    assert context.llm is default_llm
+    pool.drain()
+
+
+def test_deactivate_noop_without_bind_state(harness):
+    """Nothing bound: deactivate is a False no-op (and the pre-bind seams
+    stay exactly where they are)."""
+    registry = harness["registry"]
+    assert deactivate_agent(registry) is False
+    assert registry.active_alias(ComponentSlot.LOOP) == "plan_execute"
 
 
 def test_detach_only_rolls_back_the_bound_agent(harness):

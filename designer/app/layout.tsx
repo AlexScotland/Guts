@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Loop Designer",
   description:
-    "Design agent-loop orchestration as a JSON graph over the learning-ai-harness primitives — connect, branch, retry, run.",
+    "Design agent-loop orchestration as a JSON graph over the GUTS primitives — connect, branch, retry, run.",
 };
 
 // Sets the resolved theme on <html> before first paint (same storage key as

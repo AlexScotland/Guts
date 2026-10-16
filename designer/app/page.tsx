@@ -14,6 +14,7 @@ import {
   activate,
   activateAgent,
   ApiError,
+  deactivateAgent,
   deleteAgent,
   deleteGraph,
   getComponents,
@@ -653,6 +654,23 @@ export default function Page() {
     [agentDirty, canvasAgents, graph.id, saveAgentNode, refreshDoors, notify, clearAgentBusy]
   );
 
+  const onDeactivateAgent = useCallback(async () => {
+    // The deactivate door is global — it rolls back WHATEVER is currently
+    // bound, no id needed, and it must NOT save anything first: it never
+    // reads the document (the saved twin stays exactly as it is).
+    if (!activeAgent) return; // nothing active ⇒ the door would be a 200 no-op
+    setAgentBusy({ id: activeAgent, label: "deactivating…" });
+    try {
+      await deactivateAgent();
+      await refreshDoors();
+      notify(true, `Deactivated agent ${activeAgent} — the built-in pipeline runs from the next turn.`);
+    } catch (e) {
+      notify(false, e instanceof Error ? e.message : String(e));
+    } finally {
+      clearAgentBusy(activeAgent);
+    }
+  }, [activeAgent, refreshDoors, notify, clearAgentBusy]);
+
   const onDeleteSavedAgent = useCallback(
     async (id: string) => {
       const ok = window.confirm(
@@ -932,6 +950,7 @@ export default function Page() {
             onAgentRename={renameAgentNode}
             onAgentSave={(id) => void onAgentSave(id)}
             onAgentActivate={(id) => void onAgentActivate(id)}
+            onAgentDeactivate={() => void onDeactivateAgent()}
             onAgentDeleteSaved={(id) => void onDeleteSavedAgent(id)}
             onAgentTestMcp={(id, alias) => void onAgentTestMcp(id, alias)}
           />

@@ -1,5 +1,5 @@
 /**
- * API client for the learning-ai-harness backend (designer surface).
+ * API client for the GUTS backend (designer surface).
  *
  * Endpoints (see app/server.py):
  *   GET    /api/components             — one door: slots, presets, primitives, graphs
@@ -274,6 +274,19 @@ export async function activateAgent(id: string): Promise<AgentsStatus> {
       `${API_URL}/api/agents/${encodeURIComponent(id)}/activate`,
       { method: "POST" }
     );
+  } catch (err) {
+    guardNetwork(err, "Could not reach the AI backend. Is it running?");
+  }
+  return handle(res, (b) => b as AgentsStatus);
+}
+
+/** POST /api/agents/deactivate — clear the ACTIVE agent WITHOUT deleting
+ *  the document (the live bind rolls back; the built-in pipeline comes back
+ *  from the next turn). Returns the family shape `{ active, agents: […] }`. */
+export async function deactivateAgent(): Promise<AgentsStatus> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/agents/deactivate`, { method: "POST" });
   } catch (err) {
     guardNetwork(err, "Could not reach the AI backend. Is it running?");
   }

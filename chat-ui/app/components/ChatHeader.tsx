@@ -44,7 +44,7 @@ export default function ChatHeader({
           </svg>
         </div>
         <div className={styles.titles}>
-          <h1 className={styles.title}>Learning Harness</h1>
+          <h1 className={styles.title}>GUTS</h1>
           <p className={styles.subtitle}>
             <span
               className={`${styles.dot} ${styles[`dot_${status}`]}`}

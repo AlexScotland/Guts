@@ -92,6 +92,8 @@ interface Props {
   onAgentRename?: (oldId: string, nextId: string) => string | null;
   onAgentSave?: (id: string) => void;
   onAgentActivate?: (id: string) => void;
+  /** The deactivate door is global (POST /api/agents/deactivate) — no id. */
+  onAgentDeactivate?: () => void;
   onAgentDeleteSaved?: (id: string) => void;
   onAgentTestMcp?: (id: string, alias: string) => void;
 }
@@ -170,6 +172,7 @@ export default function Canvas({
   onAgentRename,
   onAgentSave,
   onAgentActivate,
+  onAgentDeactivate,
   onAgentDeleteSaved,
   onAgentTestMcp,
 }: Props) {
@@ -530,6 +533,7 @@ export default function Canvas({
             onRename={(oldId, nextId) => onAgentRename?.(oldId, nextId) ?? null}
             onSave={(id) => onAgentSave?.(id)}
             onActivate={(id) => onAgentActivate?.(id)}
+            onDeactivate={() => onAgentDeactivate?.()}
             onDeleteSaved={(id) => onAgentDeleteSaved?.(id)}
             onTestMcp={(id, alias) => onAgentTestMcp?.(id, alias)}
             onClose={() => onSelect(null)}

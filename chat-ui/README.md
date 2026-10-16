@@ -1,6 +1,6 @@
-# 🤖 Learning Harness — Chat
+# 🤖 GUTS — Chat
 
-A fast chat interface for the learning-ai-harness AI assistant. Built with **Next.js 15** (App Router), **React 19**, **TypeScript**, and **CSS Modules** with a **light/dark theme** design system.
+A fast chat interface for the GUTS AI assistant. Built with **Next.js 15** (App Router), **React 19**, **TypeScript**, and **CSS Modules** with a **light/dark theme** design system.
 
 ## Features
 

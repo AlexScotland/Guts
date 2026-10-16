@@ -157,9 +157,10 @@ makes the fallback free.
 ## 9. What this removes (Phase 3)
 
 - `components/agent_store.py`, `agents/*.json`, `agents/_meta.json`
-- `/api/agents` CRUD, `/api/agents/{id}/activate`, `/{id}/mcp/test`
-  (replaced by a body-scoped test: same alias spec in the body), owned-loop
-  cascade (`owner` field, `delete_owned_by`)
+- `/api/agents` CRUD, `/api/agents/{id}/activate`,
+  `/api/agents/deactivate`, `/{id}/mcp/test` (replaced by a body-scoped
+  test: same alias spec in the body), owned-loop cascade (`owner` field,
+  `delete_owned_by`)
 - `_materialize_persona`, `_EXTRAS_PERSONA_PATH`, `prev_agent_path`
   restore, `ensure_agent_bound` + `_EXTRAS_BIND_STATE` signature bookkeeping
 - `loop.ref` as a contract path (transitional in Phase 1)

@@ -7,6 +7,7 @@ import {
   getAgents,
   getAgent,
   activateAgent,
+  deactivateAgent,
   testAgentMcp,
 } from "../lib/api";
 import type {
@@ -133,6 +134,32 @@ export default function ComponentPanel({ open, onClose }: Props) {
     }
   };
 
+  const deactivate = async () => {
+    setBusy("agent:deactivate");
+    setError(null);
+    setFlash(null);
+    try {
+      const next = await deactivateAgent();
+      setAgents(next);
+      setActiveDoc(null);
+      setMcpTests({});
+      // the restore swapped slot aliases back — mirror it in the components
+      // view too:
+      setStatus(await getComponents());
+      setFlash("Agent deactivated — the built-in pipeline runs from the next turn.");
+      window.setTimeout(() => setFlash(null), 4000);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Deactivation failed."
+      );
+      await refresh().catch(() => {});
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const runMcpTest = async (alias: string) => {
     const activeId = agents?.active;
     if (!activeId) return;
@@ -200,7 +227,19 @@ export default function ComponentPanel({ open, onClose }: Props) {
                   <div className={styles.agentHead}>
                     <span className={styles.agentName}>{a.name}</span>
                     <span className={styles.agentId}>{a.id}</span>
-                    {a.active && <span className={styles.activeTag}>active</span>}
+                    {a.active && (
+                      <>
+                        <span className={styles.activeTag}>active</span>
+                        <button
+                          className={styles.ghost}
+                          disabled={busy !== null}
+                          onClick={() => void deactivate()}
+                          title="Keep this document but roll the live bind back — the built-in pipeline runs from the next turn"
+                        >
+                          Deactivate
+                        </button>
+                      </>
+                    )}
                     {!a.active && (
                       <button
                         className={styles.ghost}

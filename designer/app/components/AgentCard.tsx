@@ -64,6 +64,9 @@ interface Props {
   onRename: (oldId: string, nextId: string) => string | null;
   onSave: (id: string) => void;
   onActivate: (id: string) => void;
+  /** The deactivation door is global (no id) — shown on the ACTIVE agent's
+   *  inspector only, like the chat panel's Deactivate button. */
+  onDeactivate: () => void;
   onDeleteSaved: (id: string) => void;
   onTestMcp: (id: string, alias: string) => void;
   onClose: () => void;
@@ -97,6 +100,7 @@ export default function AgentCard({
   onRename,
   onSave,
   onActivate,
+  onDeactivate,
   onDeleteSaved,
   onTestMcp,
   onClose,
@@ -253,6 +257,7 @@ export default function AgentCard({
               <AgentPanel
                 key={agent.id}
                 agent={agent}
+                active={active}
                 savedGraphIds={savedGraphIds}
                 graphId={graphId}
                 canvasGraph={canvasGraph}
@@ -270,6 +275,7 @@ export default function AgentCard({
                 onRename={onRename}
                 onSave={onSave}
                 onActivate={onActivate}
+                onDeactivate={onDeactivate}
                 onDeleteSaved={onDeleteSaved}
                 onTestMcp={onTestMcp}
               />

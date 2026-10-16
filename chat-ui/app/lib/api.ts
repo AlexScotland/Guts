@@ -196,6 +196,15 @@ export async function activateAgent(agentId: string): Promise<AgentsStatus> {
   });
 }
 
+/** Clear the ACTIVE agent WITHOUT deleting the document — the live bind
+ *  rolls back and the built-in pipeline runs from the next turn. Returns
+ *  the refreshed list (active is now null). */
+export async function deactivateAgent(): Promise<AgentsStatus> {
+  return agentRequest<AgentsStatus>("/api/agents/deactivate", {
+    method: "POST",
+  });
+}
+
 /** Test one MCP connection an agent declares (the panel's "test" door). */
 export async function testAgentMcp(
   agentId: string,

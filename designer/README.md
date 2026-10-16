@@ -1,6 +1,6 @@
 # 🧩 Loop Designer
 
-The **Loop Designer** for [learning-ai-harness](../README.md): design agent-loop
+The **Loop Designer** for [GUTS](../README.md): design agent-loop
 orchestration as a JSON graph over the harness's component slots — the
 ComfyUI-style second frontend promised by
 [`docs/graph-loop-designer.md`](../docs/graph-loop-designer.md).

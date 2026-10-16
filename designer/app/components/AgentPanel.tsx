@@ -30,6 +30,10 @@ import type { CanvasEdge, CanvasGraph } from "../lib/graph";
 
 interface Props {
   agent: CanvasAgent;
+  /** This agent is the store's ACTIVE one (the bind in effect) — the
+   *  Deactivate button shows only here (the door is global; its id is the
+   *  currently active agent, so the button anchors on that document). */
+  active: boolean;
   savedGraphIds: string[];
   graphId: string;
   /** The canvas's OWN working graph — the loop builder's LIVE source (and
@@ -56,12 +60,15 @@ interface Props {
   onRename: (oldId: string, nextId: string) => string | null;
   onSave: (id: string) => void;
   onActivate: (id: string) => void;
+  /** Global (no id) — rolls the live bind back; the saved document stays. */
+  onDeactivate: () => void;
   onDeleteSaved: (id: string) => void;
   onTestMcp: (id: string, alias: string) => void;
 }
 
 export default function AgentPanel({
   agent,
+  active,
   savedGraphIds,
   graphId,
   canvasGraph,
@@ -79,6 +86,7 @@ export default function AgentPanel({
   onRename,
   onSave,
   onActivate,
+  onDeactivate,
   onDeleteSaved,
   onTestMcp,
 }: Props) {
@@ -594,6 +602,17 @@ export default function AgentPanel({
         >
           Activate
         </button>
+        {active && (
+          <button
+            type="button"
+            className={styles.btn}
+            disabled={busy}
+            title="POST /api/agents/deactivate — roll the live bind back WITHOUT deleting the document (deactivate ≠ delete); the built-in pipeline runs from the next turn, and this agent is re-activatable at any time"
+            onClick={onDeactivate}
+          >
+            Deactivate
+          </button>
+        )}
         <button
           type="button"
           className={`${styles.btn} ${styles.btnDanger}`}

@@ -1,7 +1,23 @@
-# Ouroboros
-
-**An LLM agent harness where the agent loop is *data*, not code.**
-
+# GUTS
+```text
+     _       _
+    / \     / \
+   {   }   {   }
+   {   {   }   }
+    \   \ /   /
+     \   Y   /
+     .-"`"`"-.
+   ,`         `.
+  /             \
+ /               \                                            Guts
+{     ;"";,       }                An LLM agent harness where the agent loop is *data*, not code.
+{  /";`'`,;       }
+ \{  ;`,'`;.     /
+  {  }`""`  }   /}
+  {  }      {  //  
+  {||}      {  /
+  `"'       `"'                                                         
+```
 A single Python backend ("the harness") owns one engine and exposes it through
 stable, hot-swappable **component slots**; the *topology* of a turn — which
 roles run, in what order, with what branches and retries — is declared as a
@@ -197,6 +213,7 @@ ships at `app/graph_smoke.py`.
 | `GET/POST /api/graphs` | list / save (validated — invalid ⇒ 400, never saved) graph documents |
 | `GET/DELETE /api/graphs/{id}` | fetch / delete one document |
 | `GET /api/graphs/{id}/last-run` | the **canvas seam**: finished run record, or the in-flight one (`status: "running"` + events so far) |
+| `POST /api/agents/{id}/activate` · `POST /api/agents/deactivate` | bind a saved agent (persona/model/MCP/skills) onto the pipeline from the next turn · roll it back (the document stays — re-activate any time) |
 | `GET /health` | liveness |
 
 Graphs are JSON files (`app/graphs/<id>.json` + `_meta.json` for the active

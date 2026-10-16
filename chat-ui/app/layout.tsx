@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Learning Harness",
+  title: "GUTS",
   description:
-    "Chat with the learning-ai-harness local AI agent — search, memory, tools, grounded answers.",
+    "Chat with GUTS, your local AI agent — search, memory, tools, grounded answers.",
 };
 
 // Sets the resolved theme on <html> before first paint so a stored or

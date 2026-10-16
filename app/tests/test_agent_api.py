@@ -274,6 +274,79 @@ def test_activate_unknown_agent_is_404(agent_client):
     assert res.status_code == 404
 
 
+def test_deactivate_clears_active_and_keeps_document(agent_client):
+    """The deactivate door: the active pointer goes away, the stored
+    document SURVIVES (deactivate ≠ delete) and can be re-activated."""
+    client, store = agent_client
+    client.post("/api/agents", json={"id": "a", "agent": _valid_agent(mcp=[])})
+    assert client.post("/api/agents/a/activate").json()["active"] == "a"
+    res = client.post("/api/agents/deactivate")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["active"] is None  # family shape, active gone
+    assert [e["active"] for e in body["agents"]] == [False]
+    assert store.active_id is None
+    # the document stays (files are the store) and the re-activate works
+    assert store.has("a")
+    assert os.path.isfile(os.path.join(store.directory, "a.json"))
+    assert client.get("/api/agents/a").status_code == 200
+    assert client.post("/api/agents/a/activate").json()["active"] == "a"
+
+
+def test_deactivate_restores_the_bound_pipeline(agent_client):
+    """The deactivate door closes the same runtime flow as delete — minus
+    the file: activate the agent (the bind lands on the shared seams), then
+    deactivate — every seam rolls back to the PRE-bind pipeline."""
+    from components import ComponentSlot
+
+    client, store = agent_client
+    registry = client.app.state.registry
+    context = client.app.state.context
+    graphs = client.app.state.graphs
+    client.post("/api/agents", json={"id": "a", "agent": _valid_agent(mcp=[])})
+
+    default_llm = context.llm
+    default_agent_path = context.config.agent_path
+    assert registry.active_alias(ComponentSlot.LOOP) == "plan_execute"
+    assert registry.active_alias(ComponentSlot.MEMORY) == "default"
+    assert graphs.active_id is None
+
+    # activate: the bind lands on every shared seam
+    assert client.post("/api/agents/a/activate").status_code == 200
+    assert registry.active_alias(ComponentSlot.LOOP) == "graph"
+    assert graphs.active_id == "killer-research"
+    assert context.llm is not default_llm
+    assert registry.active_alias(ComponentSlot.MEMORY) == "trimmed"
+    assert context.config.agent_path.endswith("a.persona.md")
+
+    # deactivate: every seam rolls back, the document stays
+    res = client.post("/api/agents/deactivate")
+    assert res.status_code == 200
+    assert res.json()["active"] is None
+    assert store.has("a")
+    assert registry.active_alias(ComponentSlot.LOOP) == "plan_execute"
+    assert graphs.active_id is None
+    assert context.llm is default_llm
+    assert registry.active(ComponentSlot.EXECUTOR).llm is default_llm  # rebuilt
+    assert registry.active_alias(ComponentSlot.MEMORY) == "default"
+    assert context.config.agent_path == default_agent_path
+
+
+def test_deactivate_is_idempotent_noop_when_nothing_bound(agent_client):
+    """Nothing active / nothing bound: a 200 no-op (the seams stay put),
+    and activating afterwards still works."""
+    from components import ComponentSlot
+
+    client, _ = agent_client
+    registry = client.app.state.registry
+    client.post("/api/agents", json={"id": "a", "agent": _valid_agent(mcp=[])})
+    assert client.post("/api/agents/deactivate").status_code == 200
+    assert client.post("/api/agents/deactivate").status_code == 200
+    assert client.get("/api/agents").json()["active"] is None
+    assert registry.active_alias(ComponentSlot.LOOP) == "plan_execute"
+    assert client.post("/api/agents/a/activate").json()["active"] == "a"
+
+
 def test_delete_active_agent_clears_active(agent_client):
     client, store = agent_client
     client.post("/api/agents", json={"id": "a", "agent": _valid_agent(mcp=[])})

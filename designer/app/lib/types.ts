@@ -1,5 +1,5 @@
 /**
- * Client types for the learning-ai-harness API (designer view).
+ * Client types for the GUTS API (designer view).
  *
  * Mirrors the frozen v0 contract in docs/graph-loop-designer.md:
  * the closed 8-primitive vocabulary, typed ports, one entry, control
