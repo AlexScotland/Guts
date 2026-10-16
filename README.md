@@ -5,11 +5,14 @@
 <h1>Guts</h1>
 </div>
 <div align="center">
+<h3>
   <a href="#getting-started">Quick Start</a> ·
   <a href="docs/tutorial.md">Tutorial</a> ·
   <a href="#api-surface">API</a> ·
   <a href="#contributing">Contributing</a>
 </div>
+
+<img src="assets/gif/mkt-01.gif" />
 
 A single Python backend ("the harness") owns one engine and exposes it through
 stable, hot-swappable **component slots**; the *topology* of a turn — which
@@ -18,33 +21,6 @@ small JSON **graph** over a closed 9-primitive vocabulary, validated at save
 time and executed by a generic engine. Two frontends sit on top: a chat UI and
 a ComfyUI-style canvas ("Loop Designer") that draws the graphs directly from
 the API.
-
-```
-                 ┌────────────────────────────────────────────────────┐
-                 │                ONE engine, two doors               │
-                 │                                                    │
-  browser ──────►│  chat-ui (:3010) · designer (:3020)                │
-    │            │        │  /api/*  (Next server proxies)            │
-    │            │        ▼                                           │
-    │            │  app/  FastAPI (:8000)                             │
-    │            │   ├─ slots: goal_resolver · planner · executor ·   │
-    │            │   │          evaluator · memory · loop  (hot-swap) │
-    │            │   ├─ loops: plan_execute · direct · graph          │
-    │            │   ├─ graph engine over 9 primitives (JSON graphs)  │
-    │            │   ├─ tools: web search · python · files · pdf · ...│
-    │            │   └─ memory: markdown knowledge base + PDFs        │
-    │            │        │ LLM over HTTP                             │
-    │            └────────┼───────────────────────────────────────────┘
-    │                     ▼
-    │            Ollama (host)   SearXNG (:8080)   Valkey (cache)
-    └──────────────────────────────────────────────────────────────────
-```
-
-Why: which components run is swappable today, but *the order they run in*
-used to be hard-coded per loop class. A retry-with-critique pass, a
-parallel-research fan-out, a supervisor that dispatches to a specialist —
-each used to mean writing a new Python `AgentLoop`. Now each of them is a
-JSON file.
 
 ## Getting started
 
@@ -288,7 +264,6 @@ docs/         the tutorial + the design docs; the graph contract and its
   in the registry, extend `PRIMITIVES` in `app/schemas/graph.py`, add
   fakes + tests, and add a sample graph that exercises it.
 - Docs first: if it changes the contract, it gets a `docs/*.md` entry.
-
 ```text
                                                              _       _
                                                             / \     / \
