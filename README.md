@@ -1,23 +1,35 @@
-# GUTS
 ```text
-     _       _
-    / \     / \
-   {   }   {   }
-   {   {   }   }
-    \   \ /   /
-     \   Y   /
-     .-"`"`"-.
-   ,`         `.
-  /             \
- /               \                                            Guts
-{     ;"";,       }                An LLM agent harness where the agent loop is *data*, not code.
-{  /";`'`,;       }
- \{  ;`,'`;.     /
-  {  }`""`  }   /}
-  {  }      {  //  
-  {||}      {  /
-  `"'       `"'                                                         
+                                                             _       _
+                                                            / \     / \
+                                                           {   }   {   }
+                                                           {   {   }   }
+                                                            \   \ /   /
+                                                             \   Y   /
+                                                             .-"`"`"-.
+                                                           ,`         `.
+                                                          /             \
+                                                         /               \
+                                                        {     ;"";,       }
+                                                        {  /";`'`,;       }
+                                                         \{  ;`,'`;.     /
+                                                          {  }`""`  }   /}
+                                                          {  }      {  //  
+                                                          {||}      {  /
+                                                          `"'       `"'                                                         
+                                                               Guts
+                                    An LLM agent harness where the agent loop is *data*, not code.
+
 ```
+<img src='docs/gif/mkt-01.gif' />
+
+<div align="center">
+  <a href="#getting-started">Quick Start</a> ·
+  <a href="docs/tutorial.md">Tutorial</a> ·
+  <a href="#api-surface">API</a> ·
+  <a href="#contributing">Contributing</a>
+</div>
+
+# Guts
 A single Python backend ("the harness") owns one engine and exposes it through
 stable, hot-swappable **component slots**; the *topology* of a turn — which
 roles run, in what order, with what branches and retries — is declared as a
@@ -52,76 +64,6 @@ used to be hard-coded per loop class. A retry-with-critique pass, a
 parallel-research fan-out, a supervisor that dispatches to a specialist —
 each used to mean writing a new Python `AgentLoop`. Now each of them is a
 JSON file.
-
-## The two axes of a configuration
-
-**Slots** (code, swapped at runtime) — every role the loop needs is a slot
-with a stable contract; implementations register under an *alias* and are
-activated at runtime, so any slot changes from the very next turn with no
-restart:
-
-| Slot          | Job                                              | Ships with                        |
-|---------------|--------------------------------------------------|-----------------------------------|
-| `goal_resolver` | user input → a resolved `Goal`                 | LLM extractor, passthrough        |
-| `planner`     | `Goal` → task list                               | LLM planner, trivial single-task  |
-| `executor`    | runs one task (LLM + tools)                      | LLM+tools executor, echo          |
-| `evaluator`   | continue / complete / replan after a task        | heuristic, always-complete        |
-| `memory`      | conversation store, per-agent (concurrency-safe) | full, trimmed                     |
-| `loop`        | **the topology of a turn**                       | `plan_execute`, `direct`, `graph` |
-
-**Graphs** (data, saved as JSON) — the `loop` slot's `graph` alias executes
-the active graph per turn over a closed primitive vocabulary:
-
-| Primitive  | Maps to                                   | Provides        | Needs (in)          | Notes |
-|------------|-------------------------------------------|-----------------|---------------------|-------|
-| `prompt`   | — (no slot, no LLM)                       | `context`       | `goal?`             | inject fixed text (`config.text`) |
-| `research` | executor slot, **read-only by contract**  | `context`, `result` | `goal`, `context?` | |
-| `plan`     | `planner` slot                            | `plan`          | `goal`, `context?`  | |
-| `act`      | `executor` slot — **the only side-effecter** | `result`      | `plan` **or** `context` | rejected inside parallel branches |
-| `critic`   | `evaluator` slot, then LLM-with-schema    | `verdict`, `pass` | `result`          | |
-| `gate`     | — (pure projection, no LLM)               | `pass`          | `verdict`           | deterministic pass/fail readout |
-| `merge`    | — (the **only** committer of branch outputs) | `merged`, `result`, `context` | `result`/`merged` | commits in declared edge order |
-| `parallel` | — (asyncio, branch-local blackboards)     | `merged`        | `goal`, `context?`  | inline branch graphs; `max_parallel` cap |
-| `route`    | one structured LLM call (or manual pin)   | `context`, `result` (passthrough) | `goal`/`context`/`result` | v1: choice among its outgoing edges |
-
-Edges are either **data** (typed against provides/needs, must be acyclic) or
-**control** (retries; may leave only `critic`/`gate`; must carry
-`max_passes`). Everything is **validated before it can be saved**
-(`app/schemas/graph.py` — pure, no LLM, no I/O), a document that cannot be
-validated cannot be saved, activated, or executed.
-
-**Agents** (a document, the *layer above* the loop) — a *specialist* is a second
-document: a capability bundle — an optional model, a set of MCP tool servers, a
-set of skills, an optional persona, and settings overrides — around **exactly
-one** `loop` child (a saved graph id or a built-in alias). Bind the bundle at
-turn start and run the existing loop **unchanged**, so "a different agent = a
-different model/MCP/skills/flow" is a *validated document + activate*, not an
-edit-and-restart. Contract and the full surface (chat panel, the designer's
-read-only Agents library, and the designer's **agent node** — add/edit/
-save/activate/delete/test-MCP on the canvas over the REST door):
-[agent-graph.md](docs/agent-graph.md).
-
-## Six samples that walk the contract
-
-`app/graphs/sample-*.json` — each file adds exactly one more contract feature
-on top of the last. They validate against the real contract
-(`validate_graph`) and are active-ready in the designer's library:
-
-| File | Shows |
-|------|-------|
-| `sample-hello` | the minimal graph document: `prompt → act`, one data edge, one budget ceiling |
-| `sample-pipeline` | `research → plan → act`; per-node budgets; `on_failure: "skip"` — a flaky lookup degrades, the planner falls back to the goal alone |
-| `sample-critique` | the retry loop: `act → critic` + a **control** edge back to `act` with `max_passes: 3` — the only legal cycle in the contract |
-| `sample-fanout` | the full vocabulary: `parallel` (2 inline read-only branches) → `merge` (commits in declared order) → `act` with `on_failure: "retry(2)"` → `critic` → `gate` (terminal, no LLM) |
-| `sample-supervisor` | the `route` v1 primitive: the classic supervisor — outgoing edges are the choice set, `llm` decider (choice + mandatory reason), declared `fallback`, untaken branches skipped as `"not routed"` |
-| `sample-manual-route` | the same supervisor with the `manual` decider: `pinned` + `budget: 0` = zero LLM calls on the hop — deterministic debug/offline mode |
-
-Validate any of them yourself (stdlib-only, no dependencies needed):
-
-```bash
-cd app
-python3 -c "from schemas.graph import parse_graph; print(parse_graph('graphs/sample-critique.json').topo)"
-```
 
 ## Getting started
 
@@ -202,6 +144,95 @@ PYTHONPATH=.pydeps python3 -m pytest tests/ -q
 
 A real-LLM end-to-end smoke run (prints the answer + every node event)
 ships at `app/graph_smoke.py`.
+
+## Features
+
+- **One engine, hot-swappable slots** — six stable slots (goal-resolver, planner, executor, evaluator, memory, loop) you swap at runtime; the new alias is live on the very next turn, no restart.
+- **Topology as data** — the order roles run is a small JSON graph over a closed 9-primitive vocabulary, validated before it can be saved or run; a new flow is a JSON file, not a new loop class.
+- **Loop Designer** — a ComfyUI-style canvas that draws and edits graphs straight from the API; the palette renders the engine, not a copy of it.
+- **Chat UI** — a Next.js chat front on the same stateless backend.
+- **Runs with or without an LLM** — an `offline` preset (zero LLM calls) and `manual`-route graphs exercise the full contract with no model access.
+- **Agents** — a capability bundle (model + MCP servers + skills + persona) around exactly one loop; bind it at turn start, roll it back any time.
+- **Six sample graphs** — `app/graphs/sample-*.json`, each adding exactly one more contract feature, all active-ready.
+- **Fake-driven test suite** — the oracle; real-LLM runs are smoke tests, never assertions.
+
+## Security
+
+Guts ships real local tools (shell, Python, files, PDFs, web search) and drives whatever LLM you point Ollama at. Treat it like a powerful local box:
+
+- Keep the API (`:8000`) and the chat/designer frontends on **localhost or a private network** — there is no built-in auth.
+- Ollama runs on **your host**; whatever model access it grants is the access the harness gets. Keep it behind your own controls.
+- Don't commit `searxng/.env`, the local `app/.pydeps/`, or any saved graph/agent document that embeds credentials.
+
+## The two axes of a configuration
+
+**Slots** (code, swapped at runtime) — every role the loop needs is a slot
+with a stable contract; implementations register under an *alias* and are
+activated at runtime, so any slot changes from the very next turn with no
+restart:
+
+| Slot          | Job                                              | Ships with                        |
+|---------------|--------------------------------------------------|-----------------------------------|
+| `goal_resolver` | user input → a resolved `Goal`                 | LLM extractor, passthrough        |
+| `planner`     | `Goal` → task list                               | LLM planner, trivial single-task  |
+| `executor`    | runs one task (LLM + tools)                      | LLM+tools executor, echo          |
+| `evaluator`   | continue / complete / replan after a task        | heuristic, always-complete        |
+| `memory`      | conversation store, per-agent (concurrency-safe) | full, trimmed                     |
+| `loop`        | **the topology of a turn**                       | `plan_execute`, `direct`, `graph` |
+
+**Graphs** (data, saved as JSON) — the `loop` slot's `graph` alias executes
+the active graph per turn over a closed primitive vocabulary:
+
+| Primitive  | Maps to                                   | Provides        | Needs (in)          | Notes |
+|------------|-------------------------------------------|-----------------|---------------------|-------|
+| `prompt`   | — (no slot, no LLM)                       | `context`       | `goal?`             | inject fixed text (`config.text`) |
+| `research` | executor slot, **read-only by contract**  | `context`, `result` | `goal`, `context?` | |
+| `plan`     | `planner` slot                            | `plan`          | `goal`, `context?`  | |
+| `act`      | `executor` slot — **the only side-effecter** | `result`      | `plan` **or** `context` | rejected inside parallel branches |
+| `critic`   | `evaluator` slot, then LLM-with-schema    | `verdict`, `pass` | `result`          | |
+| `gate`     | — (pure projection, no LLM)               | `pass`          | `verdict`           | deterministic pass/fail readout |
+| `merge`    | — (the **only** committer of branch outputs) | `merged`, `result`, `context` | `result`/`merged` | commits in declared edge order |
+| `parallel` | — (asyncio, branch-local blackboards)     | `merged`        | `goal`, `context?`  | inline branch graphs; `max_parallel` cap |
+| `route`    | one structured LLM call (or manual pin)   | `context`, `result` (passthrough) | `goal`/`context`/`result` | v1: choice among its outgoing edges |
+
+Edges are either **data** (typed against provides/needs, must be acyclic) or
+**control** (retries; may leave only `critic`/`gate`; must carry
+`max_passes`). Everything is **validated before it can be saved**
+(`app/schemas/graph.py` — pure, no LLM, no I/O), a document that cannot be
+validated cannot be saved, activated, or executed.
+
+**Agents** (a document, the *layer above* the loop) — a *specialist* is a second
+document: a capability bundle — an optional model, a set of MCP tool servers, a
+set of skills, an optional persona, and settings overrides — around **exactly
+one** `loop` child (a saved graph id or a built-in alias). Bind the bundle at
+turn start and run the existing loop **unchanged**, so "a different agent = a
+different model/MCP/skills/flow" is a *validated document + activate*, not an
+edit-and-restart. Contract and the full surface (chat panel, the designer's
+read-only Agents library, and the designer's **agent node** — add/edit/
+save/activate/delete/test-MCP on the canvas over the REST door):
+[agent-graph.md](docs/agent-graph.md).
+
+## Six samples that walk the contract
+
+`app/graphs/sample-*.json` — each file adds exactly one more contract feature
+on top of the last. They validate against the real contract
+(`validate_graph`) and are active-ready in the designer's library:
+
+| File | Shows |
+|------|-------|
+| `sample-hello` | the minimal graph document: `prompt → act`, one data edge, one budget ceiling |
+| `sample-pipeline` | `research → plan → act`; per-node budgets; `on_failure: "skip"` — a flaky lookup degrades, the planner falls back to the goal alone |
+| `sample-critique` | the retry loop: `act → critic` + a **control** edge back to `act` with `max_passes: 3` — the only legal cycle in the contract |
+| `sample-fanout` | the full vocabulary: `parallel` (2 inline read-only branches) → `merge` (commits in declared order) → `act` with `on_failure: "retry(2)"` → `critic` → `gate` (terminal, no LLM) |
+| `sample-supervisor` | the `route` v1 primitive: the classic supervisor — outgoing edges are the choice set, `llm` decider (choice + mandatory reason), declared `fallback`, untaken branches skipped as `"not routed"` |
+| `sample-manual-route` | the same supervisor with the `manual` decider: `pinned` + `budget: 0` = zero LLM calls on the hop — deterministic debug/offline mode |
+
+Validate any of them yourself (stdlib-only, no dependencies needed):
+
+```bash
+cd app
+python3 -c "from schemas.graph import parse_graph; print(parse_graph('graphs/sample-critique.json').topo)"
+```
 
 ## API surface
 
