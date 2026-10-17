@@ -7,7 +7,7 @@ Supersedes: — (complements [tutorial.md](tutorial.md) §9 and the `designer/` 
 ## What a stranger sees
 
 The site is the repo's **GitHub project page** — served under the repo path
-(e.g. `https://alexscotland.github.io/GUTS/`): the landing sits at the site
+(e.g. `https://alexscotland.github.io/Guts/`): the landing sits at the site
 root, the Loop Designer directly beneath it. Everything stays portable to any
 subpath: the landing's links are **relative** (`designer/`), and the
 designer's `basePath` is baked at build time from `PAGES_BASE_PATH`
@@ -21,7 +21,7 @@ custom domain). At the site root, a fully static landing page:
    canvas logic in `designer/app/lib/run.ts`. The footer states honestly that
    the run made **zero LLM calls**.
 2. **Try it live** — the Loop Designer, statically exported right under the
-   landing (e.g. `.../GUTS/designer/`). With a live backend baked in (below)
+   landing (e.g. `.../Guts/designer/`). With a live backend baked in (below)
    it talks to it directly; without one, it is a read-only look at the
    product (see *Caveats*).
 
@@ -103,7 +103,7 @@ python3 deploy/tools/capture_demo_run.py \
 
 ```bash
 cd designer && npm ci
-PAGES_BASE_PATH="/GUTS/designer" npm run build:pages   # → designer/out/
+PAGES_BASE_PATH="/Guts/designer" npm run build:pages   # → designer/out/
 cp -R designer/out/. ../deploy/pages/designer/         # land it where CI would
 node ../deploy/tools/pages_smoke.mjs                   # (smoke still passes)
 ```
@@ -134,15 +134,15 @@ which is what makes the static build honest without a backend).
 ## Local preview
 
 The whole site is static; no backend needed. The designer's asset URLs are
-baked to the **project-page subpath** (`/GUTS/designer/_next/…`), so to
-mirror production faithfully, serve the site *under* `/GUTS/`:
+baked to the **project-page subpath** (`/Guts/designer/_next/…`), so to
+mirror production faithfully, serve the site *under* `/Guts/`:
 
 ```bash
 rm -rf /tmp/guts-preview && mkdir -p /tmp/guts-preview/GUTS
-cp -R deploy/pages/. /tmp/guts-preview/GUTS/
+cp -R deploy/pages/. /tmp/guts-preview/Guts/
 python3 -m http.server 8080 --directory /tmp/guts-preview
-# → http://localhost:8080/GUTS/          landing + replay
-# → http://localhost:8080/GUTS/designer/ designer (needs a live API to be useful)
+# → http://localhost:8080/Guts/          landing + replay
+# → http://localhost:8080/Guts/designer/ designer (needs a live API to be useful)
 node deploy/tools/pages_smoke.mjs   # headless contract check
 ```
 

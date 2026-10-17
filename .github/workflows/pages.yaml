@@ -8,8 +8,8 @@
 # Shape: the modern `actions/upload-pages-artifact` → `actions/deploy-pages`
 # pair; only the final deploy job carries `pages:write` / `id-token:write`.
 #
-# Hosting: the repo's *project page* — this repo serves at /GUTS/
-# (e.g. alexscotland.github.io/GUTS/) with the landing at the site root and
+# Hosting: the repo's *project page* — this repo serves at /Guts/
+# (e.g. alexscotland.github.io/Guts/) with the landing at the site root and
 # the designer right underneath it. The landing's links are relative
 # (`designer/`) so they hold at any subpath, and the designer's basePath is
 # baked at build time from PAGES_BASE_PATH below (next.config.js; its default
@@ -71,8 +71,8 @@ jobs:
         # a live backend. Use `npm run` so `next` resolves via node_modules/.bin
         # (a bare `next` isn't on the runner's PATH → command not found).
         # PAGES_BASE_PATH must match where this repo's site is served: the
-        # project page under /GUTS/, so the designer lives at /GUTS/designer/.
-        run: NEXT_PUBLIC_API_URL="$LIVE_API_URL" PAGES_BASE_PATH="/GUTS/designer" npm run build:pages
+        # project page under /Guts/, so the designer lives at /Guts/designer/.
+        run: NEXT_PUBLIC_API_URL="$LIVE_API_URL" PAGES_BASE_PATH="/Guts/designer" npm run build:pages
       - name: Land the export where the Pages artifact expects it
         run: |
           mkdir -p deploy/pages/designer
