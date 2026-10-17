@@ -63,6 +63,19 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+def _demo_bootstrap():
+    """No-op unless GUTS_DEMO=1 (see demo_bootstrap.py): on the public demo
+    instance this activates the zero-LLM 'offline' preset and the showcase
+    graph so a stranger can click "try it" and see a real graph run."""
+    try:
+        from demo_bootstrap import bootstrap_demo
+
+        bootstrap_demo()
+    except Exception as exc:  # noqa: BLE001 — a failed seed must not kill boot
+        logger.warning("demo bootstrap skipped: %r", exc)
+
+
 # ── Owned loops (the per-agent private loop, docs/agent-graph.md) ────────────
 
 #: The seed loop created when an author "builds" their agent's loop from an

@@ -1,0 +1,112 @@
+{
+  "meta": {
+    "tool": "capture_demo_run.py",
+    "captured_at_utc": "2026-10-17T21:24:08Z",
+    "preset": "offline",
+    "graph_id": "sample-manual-route",
+    "graph_name": "sample/manual-route — the same supervisor, fully deterministic",
+    "message": "Explain how a routing node decides which branch to run.",
+    "llm_calls": 0,
+    "note": "REAL capture: the offline preset is deterministic, so every run — yours, the live instance's, or this replay's — walks the same event stream."
+  },
+  "graph": {
+    "name": "sample/manual-route — the same supervisor, fully deterministic",
+    "description": "A route node with the 'manual' decider: config.pinned names the branch that ALWAYS runs, zero LLM calls on the hop (a node budget of 0 is offline mode by construction). Same choice-set wiring rules as the llm decider — options keys must equal the downstream ids, 'fallback' must be in the set. Use it to pin a graph for debugging, testing, or to exercise one branch of a larger design graph without burning model budget. 'rule' is reserved (validator rejects it).",
+    "version": "1.0",
+    "budget": 60,
+    "nodes": {
+      "dispatch": {
+        "primitive": "route",
+        "config": {
+          "decider": "manual",
+          "pinned": "notes",
+          "fallback": "notes",
+          "options": {
+            "notes": "Turn the context into a polished written note or summary — the low-risk path.",
+            "blueprint": "Break the goal into a concrete, step-by-step implementation plan."
+          }
+        },
+        "budget": 0
+      },
+      "notes": {
+        "primitive": "act",
+        "config": {
+          "task": "Write a clear, self-contained note answering the goal, grounded in any context provided."
+        },
+        "budget": 25
+      },
+      "blueprint": {
+        "primitive": "plan",
+        "config": {},
+        "budget": 15
+      }
+    },
+    "edges": [
+      {
+        "from": "dispatch",
+        "to": "notes",
+        "type": "data"
+      },
+      {
+        "from": "dispatch",
+        "to": "blueprint",
+        "type": "data"
+      }
+    ]
+  },
+  "answer": "ECHO[notes]: Write a clear, self-contained note answering the goal, grounded in any context provided.",
+  "status": "ok",
+  "real_duration_ms": 0.0,
+  "pace_ms": [
+    500,
+    280,
+    720,
+    340,
+    560,
+    280,
+    720,
+    340
+  ],
+  "events": [
+    {
+      "event": "start",
+      "node": "dispatch"
+    },
+    {
+      "event": "result",
+      "node": "dispatch",
+      "detail": "choice, context, reason, result",
+      "outputs": {
+        "choice": "notes",
+        "reason": "manual decision: pinned branch 'notes'",
+        "context": "intent='Explain how a routing node decides which branch to run.' requirements=[] constraints=[] suggested_sources=None output_spec=None",
+        "result": "intent='Explain how a routing node decides which branch to run.' requirements=[] constraints=[] suggested_sources=None output_spec=None"
+      }
+    },
+    {
+      "event": "done",
+      "node": "dispatch"
+    },
+    {
+      "event": "skipped",
+      "node": "blueprint",
+      "detail": "not routed"
+    },
+    {
+      "event": "start",
+      "node": "notes"
+    },
+    {
+      "event": "result",
+      "node": "notes",
+      "detail": "result",
+      "outputs": {
+        "result": "ECHO[notes]: Write a clear, self-contained note answering the goal, grounded in any context provided."
+      }
+    },
+    {
+      "event": "done",
+      "node": "notes"
+    }
+  ]
+}

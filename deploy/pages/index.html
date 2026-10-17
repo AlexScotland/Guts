@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GUTS — a graph-defined harness for LLM agents</title>
+  <meta name="description" content="GUTS: one Python engine, hot-swappable component slots, and turns declared as a JSON graph over a closed 9-primitive vocabulary. Watch a real run replay, then try the Loop Designer live." />
+  <link rel="icon" href="assets/img/guts-logo-light.png" type="image/png" />
+  <link rel="stylesheet" href="assets/css/landing.css" />
+  <script type="module" src="assets/js/player.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand">
+      <img src="assets/img/guts-logo-light.png" alt="" width="34" height="34" />
+      <span class="brand-name">GUTS</span>
+    </div>
+    <nav>
+      <a href="#replay">Live run</a>
+      <a href="#how">How it works</a>
+      <a class="pill" href="/designer/" id="try-live-btn" data-live>
+        Try it live <span aria-hidden="true">→</span>
+      </a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>One engine. <span class="hl">A JSON graph.</span> Every hop observable.</h1>
+      <p class="sub">
+        GUTS is a Python backend that owns one LLM agent engine and exposes it
+        through hot-swappable <em>component slots</em>. The topology of a
+        turn — which roles run, in what order, with what branches and
+        retries — is a small validated <em>graph</em> over a closed
+        9-primitive vocabulary. Draw it on the canvas; watch the node-event
+        stream as it runs.
+      </p>
+    </section>
+
+    <section class="replay-card" id="replay">
+      <div class="replay-head">
+        <div>
+          <div class="eyebrow">Replay of a real run</div>
+          <h2 class="visually-hidden">Replay of a real run</h2>
+          <p class="meta" id="replay-meta">
+            <span id="meta-graph">…</span> · <span id="meta-preset">…</span> preset
+            · <span id="meta-events">…</span> events · <span id="meta-llm">…</span>
+          </p>
+        </div>
+        <button id="replay-btn" type="button" aria-label="Replay the run">↻ Replay</button>
+      </div>
+
+      <div class="replay-body">
+        <div class="canvas-wrap">
+          <svg id="replay-svg" viewBox="0 0 640 300" role="img"
+               aria-label="The graph, with nodes lighting up as each real event of the run arrives"></svg>
+          <div class="stage-note" id="stage-note">loading the real event stream…</div>
+        </div>
+
+        <div class="feed-wrap">
+          <div class="feed-title" id="feed-title">event stream</div>
+          <ol id="event-feed" class="feed" aria-live="polite"></ol>
+          <div class="answer" id="answer-box" hidden>
+            <div class="answer-label">answer</div>
+            <p id="answer-text"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="how" id="how">
+      <h3>Three ideas, one API</h3>
+      <div class="cards">
+        <div class="card">
+          <h4>Component slots</h4>
+          <p>Goal, planner, executor, evaluator — each a swappable slot with
+          named implementations. Swap them at runtime, <em>no restart</em>:
+          the next turn runs on what is active.</p>
+        </div>
+        <div class="card">
+          <h4>Graphs as data</h4>
+          <p>The turn's topology is a JSON document over a closed 9-primitive
+          vocabulary (prompt, plan, act, research, route, parallel, merge,
+          critic, gate). Validated at save — the canvas can't draw what the
+          engine won't run.</p>
+        </div>
+        <div class="card">
+          <h4>Event streams</h4>
+          <p>Every run emits a per-node event stream (start, result, done,
+          skipped, retry, failure…). That stream <em>is</em> the canvas
+          seam — the UI you just watched replays a real one.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta-row">
+      <a class="pill big" href="/designer/" data-live>Open the Loop Designer <span aria-hidden="true">→</span></a>
+      <a class="ghost" href="https://github.com/AlexScotland/GUTS">Source on GitHub</a>
+      <a class="ghost" href="https://github.com/AlexScotland/GUTS/blob/main/docs/tutorial.md">Step-by-step tutorial</a>
+    </section>
+  </main>
+
+  <footer>
+    <span>MIT license ·
+    demo runs the <code>offline</code> preset — <strong>zero LLM calls</strong></span>
+    <span id="live-endpoint" class="endpoint" hidden></span>
+  </footer>
+</body>
+</html>

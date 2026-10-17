@@ -12,8 +12,16 @@ app/python_workspace
 # Local test venv
 .venv-test/
 .venv/
+.venv-demo/
 # Local pip --target dependency install (no system venv available in CI sandbox)
 .pydeps/
+.pydemo/
+# Demo-capture scratch (committed tool lives at deploy/tools/capture_demo_run.py)
+.demo-capture.py
+capture.json
+capture.stderr
+# Loop Designer static export — built into the Pages deploy by CI (or locally)
+deploy/pages/designer/
 # repro-fixture run output (app/_repro.py recreates it)
 app/_repro_dir/
 **/*.dump

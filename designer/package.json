@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:pages": "PAGES_EXPORT=1 next build",
     "start": "next start",
     "lint": "next lint",
     "test": "node --experimental-strip-types --no-warnings --test app/lib/run.test.mjs app/lib/graph.test.mjs app/lib/agents.test.mjs app/lib/agentNode.test.mjs"

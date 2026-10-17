@@ -7,6 +7,7 @@
 <div align="center">
 <h3>
   <a href="#getting-started">Quick Start</a> ·
+  <a href="#public-demo">Demo</a> ·
   <a href="docs/tutorial.md">Tutorial</a> ·
   <a href="#api-surface">API</a> ·
   <a href="#contributing">Contributing</a>
@@ -21,6 +22,20 @@ small JSON **graph** over a closed 9-primitive vocabulary, validated at save
 time and executed by a generic engine. Two frontends sit on top: a chat UI and
 a ComfyUI-style canvas ("Loop Designer") that draws the graphs directly from
 the API.
+
+## Public demo
+
+**Try it with zero setup, zero LLM calls.** The GitHub Pages site (one page,
+one replay — [docs/deploy-demo.md](docs/deploy-demo.md)) replays a **real
+captured run** of the `sample-manual-route` graph: the engine's
+`offline` preset is deterministic, so the replay is bit-identical to any
+run you would get, and it makes **zero LLM calls** (the route node's
+`manual` decider pins the branch *in the document*). The Loop Designer
+lives at `/designer/`, and when a live backend exists the build bakes it in
+(`GUTS_DEMO=1` — the real app in stranger-safe posture: one env var
+activates the `offline` preset + the showcase graph). Refresh the replay
+fixture any time with `deploy/tools/capture_demo_run.py`; the site is pure
+static, previewable with `python3 -m http.server 8080 --directory deploy/pages`.
 
 ## Getting started
 
@@ -89,7 +104,7 @@ curl -s localhost:8000/api/graphs/sample-critique/last-run | python3 -m json.too
 ### Run the tests
 
 Fake-driven only — real-LLM runs are smoke tests, never assertions
-(`app/tests/`, 123 tests). Third-party deps resolve from a **local,
+(`app/tests/`, 270 tests). Third-party deps resolve from a **local,
 gitignored** `app/.pydeps/` (the Docker image installs the same
 `requirements.txt`):
 

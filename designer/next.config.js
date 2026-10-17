@@ -1,10 +1,26 @@
+/**
+ * Build modes:
+ *  - DEFAULT (Dockerfile / dev server): output 'standalone' + the same-
+ *    origin proxy below. Required by the two-stage production Dockerfile,
+ *    which copies `.next/standalone` (a self-contained `node server.js`)
+ *    into the runner image — without this the standalone output is never
+ *    produced and the build stage's COPY fails.
+ *  - PAGES_EXPORT=1 (GitHub Pages — docs/deploy-demo.md): output 'export'
+ *    — a fully static site the Pages workflow publishes under /designer/.
+ *    Static export does not support rewrites, so the client talks straight
+ *    to the live backend via NEXT_PUBLIC_API_URL (cross-origin; CORS is
+ *    already open on the API).
+ */
+const PAGES_EXPORT = process.env.PAGES_EXPORT === "1";
+// The Pages site publishes the designer under /designer/ (landing page owns
+// the root). basePath bakes that prefix into asset/root URLs; it is NOT part
+// of the emitted file layout, so `out/` still lands its assets in _next/.
+const PAGES_BASE = process.env.PAGES_BASE_PATH || "/designer";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Required by the two-stage production Dockerfile, which copies
-  // `.next/standalone` (a self-contained `node server.js`) into the runner
-  // image. Without this the standalone output is never produced and the
-  // build stage's COPY fails.
-  output: 'standalone',
+  output: PAGES_EXPORT ? "export" : "standalone",
+  ...(PAGES_EXPORT ? { basePath: PAGES_BASE } : {}),
   env: {
     // If NEXT_PUBLIC_API_URL is unset (the default), the client uses
     // *relative* URLs and talks to this server, which proxies to the
@@ -32,6 +48,10 @@ const nextConfig = {
     proxyTimeout: 86_400_000, // 24h of tolerance; a turn longer than that fails at the budgets, not here
   },
   async rewrites() {
+    // Static export (Pages) ignores rewrites; the client uses the absolute
+    // NEXT_PUBLIC_API_URL directly. Guard here so a PAGES_EXPORT build never
+    // emits proxy rules that can't work in a static context.
+    if (PAGES_EXPORT) return [];
     const base = process.env.BACKEND_PROXY_TARGET || 'http://localhost:8000';
     return [
       { source: '/api/:path*', destination: `${base}/api/:path*` },
