@@ -25,17 +25,24 @@ the API.
 
 ## Public demo
 
-**Try it with zero setup, zero LLM calls.** The GitHub Pages site (one page,
-one replay — [docs/deploy-demo.md](docs/deploy-demo.md)) replays a **real
-captured run** of the `sample-manual-route` graph: the engine's
-`offline` preset is deterministic, so the replay is bit-identical to any
-run you would get, and it makes **zero LLM calls** (the route node's
-`manual` decider pins the branch *in the document*). The Loop Designer
-lives at `/designer/`, and when a live backend exists the build bakes it in
+**[→ Open the live demo — zero setup, zero LLM calls](https://alexscoldtland.github.io/Guts/)**
+
+The Pages site replays a **real captured run** of the
+`sample-manual-route` graph: the engine's `offline` preset is
+deterministic, so the replay is bit-identical to any run you would get,
+and it makes **zero LLM calls** (the route node's `manual` decider pins
+the branch *in the document*).
+
+| Surface | Link |
+|---|---|
+| Landing + replay of a real run | [alexscoldtland.github.io/Guts/](https://alexscoldtland.github.io/Guts/) |
+| Live (interactive) Loop Designer | [alexscoldtland.github.io/Guts/designer/](https://alexscoldtland.github.io/Guts/designer/) |
+
+When a live backend exists the build bakes it into the designer
 (`GUTS_DEMO=1` — the real app in stranger-safe posture: one env var
-activates the `offline` preset + the showcase graph). Refresh the replay
-fixture any time with `deploy/tools/capture_demo_run.py`; the site is pure
-static, previewable with `python3 -m http.server 8080 --directory deploy/pages`.
+activates the `offline` preset + the showcase graph); the replay fixture
+can be refreshed any time with `deploy/tools/capture_demo_run.py`.
+Details in [docs/deploy-demo.md](docs/deploy-demo.md).
 
 ## Getting started
 
