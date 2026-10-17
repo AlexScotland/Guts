@@ -25,7 +25,7 @@ the API.
 
 ## Public demo
 
-**[→ Open the live demo — zero setup, zero LLM calls](https://alexscoldtland.github.io/Guts/)**
+**[→ Open the live demo — zero setup, zero LLM calls](https://alexscotland.github.io/Guts/)**
 
 The Pages site replays a **real captured run** of the
 `sample-manual-route` graph: the engine's `offline` preset is
@@ -35,8 +35,8 @@ the branch *in the document*).
 
 | Surface | Link |
 |---|---|
-| Landing + replay of a real run | [alexscoldtland.github.io/Guts/](https://alexscoldtland.github.io/Guts/) |
-| Live (interactive) Loop Designer | [alexscoldtland.github.io/Guts/designer/](https://alexscoldtland.github.io/Guts/designer/) |
+| Landing + replay of a real run | [alexscotland.github.io/Guts/](https://alexscotland.github.io/Guts/) |
+| Live (interactive) Loop Designer | [alexscotland.github.io/Guts/designer/](https://alexscotland.github.io/Guts/designer/) |
 
 When a live backend exists the build bakes it into the designer
 (`GUTS_DEMO=1` — the real app in stranger-safe posture: one env var
