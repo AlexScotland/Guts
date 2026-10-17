@@ -135,6 +135,16 @@ main {
 .pill:hover { background: var(--accent-strong); transform: translateY(-1px); }
 .pill.big { padding: 12px 22px; font-size: 16px; }
 
+/* "Try it live" (header, top right): the label is drawn as a dark-ink
+   outline instead of a solid fill — solid white text sat badly against
+   the near-white header in the light theme. Both themes share the ink
+   #0c1322 (the dark theme's accent ink), so the button reads the same
+   everywhere. */
+.site-header .pill {
+  color: transparent;
+  -webkit-text-stroke: 1.25px #0c1322;
+}
+
 .ghost {
   display: inline-flex;
   align-items: center;
