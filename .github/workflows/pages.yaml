@@ -8,10 +8,12 @@
 # Shape: the modern `actions/upload-pages-artifact` → `actions/deploy-pages`
 # pair; only the final deploy job carries `pages:write` / `id-token:write`.
 #
-# Assumption: the site is served at the apex of a host (a user/organization
-# site or a custom domain) — the landing's links are absolute (`/designer/`)
-# and the designer's basePath is baked as `/designer`, both correct only at
-# apex, NOT under a repo subpath (`.github.io/<repo>/`).
+# Hosting: the repo's *project page* — this repo serves at /GUTS/
+# (e.g. alexscotland.github.io/GUTS/) with the landing at the site root and
+# the designer right underneath it. The landing's links are relative
+# (`designer/`) so they hold at any subpath, and the designer's basePath is
+# baked at build time from PAGES_BASE_PATH below (next.config.js; its default
+# of /designer only fits an apex host such as a custom domain).
 #
 # Optional live API: set the repo variable `LIVE_API_URL` to the HTTPS origin
 # of the `GUTS_DEMO=1` backend. The build bakes it into the static designer
@@ -68,7 +70,9 @@ jobs:
         # blank keeps the client same-origin, which is the honest state without
         # a live backend. Use `npm run` so `next` resolves via node_modules/.bin
         # (a bare `next` isn't on the runner's PATH → command not found).
-        run: NEXT_PUBLIC_API_URL="$LIVE_API_URL" npm run build:pages
+        # PAGES_BASE_PATH must match where this repo's site is served: the
+        # project page under /GUTS/, so the designer lives at /GUTS/designer/.
+        run: NEXT_PUBLIC_API_URL="$LIVE_API_URL" PAGES_BASE_PATH="/GUTS/designer" npm run build:pages
       - name: Land the export where the Pages artifact expects it
         run: |
           mkdir -p deploy/pages/designer

@@ -6,10 +6,13 @@ Supersedes: — (complements [tutorial.md](tutorial.md) §9 and the `designer/` 
 
 ## What a stranger sees
 
-The Pages site is served at the **apex of a host** (a user/organization site
-or a custom domain — the landing's links are absolute, e.g. `/designer/`, and
-the designer's `basePath` is baked as `/designer`). At the root, a fully
-static landing page:
+The site is the repo's **GitHub project page** — served under the repo path
+(e.g. `https://alexscotland.github.io/GUTS/`): the landing sits at the site
+root, the Loop Designer directly beneath it. Everything stays portable to any
+subpath: the landing's links are **relative** (`designer/`), and the
+designer's `basePath` is baked at build time from `PAGES_BASE_PATH`
+(`next.config.js`; the default `/designer` only fits an apex host such as a
+custom domain). At the site root, a fully static landing page:
 
 1. **Replay of a real run** — the `sample-manual-route` graph (a route node with
    the `manual` decider pinned to the `notes` branch) rendered as an event
@@ -17,9 +20,10 @@ static landing page:
    `status ok`) played back with human pacing, mirroring node-for-node the
    canvas logic in `designer/app/lib/run.ts`. The footer states honestly that
    the run made **zero LLM calls**.
-2. **Try it live** — the Loop Designer, statically exported to `/designer/`.
-   With a live backend baked in (below) it talks to it directly; without one,
-   it is a read-only look at the product (see *Caveats*).
+2. **Try it live** — the Loop Designer, statically exported right under the
+   landing (e.g. `.../GUTS/designer/`). With a live backend baked in (below)
+   it talks to it directly; without one, it is a read-only look at the
+   product (see *Caveats*).
 
 The landing and replay need **no backend at all** — they are bytes on GitHub
 Pages. The backend, when present, is only ever the thing `/designer/`
@@ -98,10 +102,12 @@ python3 deploy/tools/capture_demo_run.py \
 **Loop Designer static build** (locally, e.g. to inspect the `out/`):
 
 ```bash
-cd designer && npm ci && PAGES_EXPORT=1 next build   # → designer/out/
-cp -R designer/out/. ../deploy/pages/designer/       # land it where CI would
-node ../deploy/tools/pages_smoke.mjs                 # (smoke still passes)
+cd designer && npm ci
+PAGES_BASE_PATH="/GUTS/designer" npm run build:pages   # → designer/out/
+cp -R designer/out/. ../deploy/pages/designer/         # land it where CI would
+node ../deploy/tools/pages_smoke.mjs                   # (smoke still passes)
 ```
+(`PAGES_BASE_PATH` must match where the site is served — see "Local preview".)
 
 **Live API banner** — set the Pages-site `live_api` in `deploy/pages/config.json`
 to the HTTPS origin of the backend (the player only shows it when non-empty;
@@ -127,12 +133,16 @@ which is what makes the static build honest without a backend).
 
 ## Local preview
 
-The whole site is static; no backend needed:
+The whole site is static; no backend needed. The designer's asset URLs are
+baked to the **project-page subpath** (`/GUTS/designer/_next/…`), so to
+mirror production faithfully, serve the site *under* `/GUTS/`:
 
 ```bash
-python3 -m http.server 8080 --directory deploy/pages
-# → http://localhost:8080/          landing + replay
-# → http://localhost:8080/designer/ designer (needs a live API to be useful)
+rm -rf /tmp/guts-preview && mkdir -p /tmp/guts-preview/GUTS
+cp -R deploy/pages/. /tmp/guts-preview/GUTS/
+python3 -m http.server 8080 --directory /tmp/guts-preview
+# → http://localhost:8080/GUTS/          landing + replay
+# → http://localhost:8080/GUTS/designer/ designer (needs a live API to be useful)
 node deploy/tools/pages_smoke.mjs   # headless contract check
 ```
 
