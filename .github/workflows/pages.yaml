@@ -66,8 +66,9 @@ jobs:
         working-directory: designer
         # NEXT_PUBLIC_API_URL is baked at build time (designer/app/lib/api.ts);
         # blank keeps the client same-origin, which is the honest state without
-        # a live backend.
-        run: NEXT_PUBLIC_API_URL="$LIVE_API_URL" PAGES_EXPORT=1 next build
+        # a live backend. Use `npm run` so `next` resolves via node_modules/.bin
+        # (a bare `next` isn't on the runner's PATH → command not found).
+        run: NEXT_PUBLIC_API_URL="$LIVE_API_URL" npm run build:pages
       - name: Land the export where the Pages artifact expects it
         run: |
           mkdir -p deploy/pages/designer
