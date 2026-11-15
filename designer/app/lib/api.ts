@@ -32,9 +32,17 @@ export { ApiError };
  * Default (empty) → relative URLs: requests are same-origin and the Next
  * server proxies them to the backend (rewrites() in next.config.js). That
  * works even when the browser is on a *different machine* than the backend —
- * never bake "localhost" into the client. Set NEXT_PUBLIC_API_URL to an
- * absolute URL to talk to the backend directly (legacy behaviour). */
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+ * never bake "localhost" into the client.
+ *
+ * When the designer is served under a reverse-proxy subpath (e.g. Tailscale
+ * serve mapping `/designer` to it), NEXT_PUBLIC_BASE_PATH carries that
+ * prefix so API calls stay inside it and reach the designer's own proxy —
+ * a browser cannot send absolute `/api/...` across a path-splitting proxy.
+ *
+ * Set NEXT_PUBLIC_API_URL to an absolute URL to talk to the backend
+ * directly (legacy behaviour; wins over both). */
+export const API_URL =
+  process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BASE_PATH || "";
 
 async function handle<T>(res: Response, parse: (body: unknown) => T): Promise<T> {
   if (!res.ok) {

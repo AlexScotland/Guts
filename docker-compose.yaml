@@ -56,9 +56,20 @@
         # Bind all interfaces so the dev server is reachable through the
         # host port mapping.
         - HOSTNAME=0.0.0.0
+        # Served under the /designer subpath (aifactory's `tailscale serve`
+        # maps /designer → :3020, other prefixes to other services). Bake
+        # that prefix in so page, static assets and API calls all stay
+        # inside it — otherwise assets escape to /_next/ and the proxy
+        # hands them to the catch-all service (404, unstyled page).
+        - NEXT_PUBLIC_BASE_PATH=/designer
+        # Allow the dev server's HMR websocket from the serve hostname.
+        - NEXT_PUBLIC_DEV_ORIGIN=aifactory.tail26bcb1.ts.net
       volumes:
         # Live source tree — HMR picks up edits without a rebuild.
         - ./designer/app:/app/app
+        # Live config too: the image bakes its own copy at build time, and
+        # without this mount config changes would need an image rebuild.
+        - ./designer/next.config.js:/app/next.config.js:ro
         # Fresh in-memory .next for the dev server.  Without this it would
         # inherit the production build output baked into the `build` stage
         # image, and the dev server does not clear that on its own.
