@@ -26,6 +26,9 @@ Exposes:
   POST /api/agents/deactivate   — clear the ACTIVE one (the document stays)
   POST /api/agents/{id}/mcp/test — test one declared MCP connection (list,
                                    enable, test from the component panel)
+  GET  /api/designer/catalog    — the frozen graph language (primitives + rules)
+  POST /api/designer/draft      — design/revise a loop from a sentence (stateless;
+                                   doc + validate_graph verdict always returned)
   GET  /health                — liveness probe
 """
 
@@ -43,6 +46,8 @@ from components.agent_store import AgentError, describe_agents, get_agent_store
 from schemas.agent import validate_agent
 from components.primitives.base import describe_error
 from main import build_agent, get_registry
+from design import catalog as design_catalog
+from design import draft as design_draft
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai-backend")
@@ -192,6 +197,25 @@ class McpTestRequest(BaseModel):
     alias: str = Field(
         ..., min_length=1, max_length=128,
         description="An mcp alias declared in this agent document (the one to test).",
+    )
+
+
+class DraftRequest(BaseModel):
+    goal: str = Field(
+        ..., min_length=1,
+        description="The loop's purpose, in the user's words — what to design.",
+    )
+    notes: str | None = Field(
+        default=None,
+        description=(
+            "Optional business case: repeat counts ('loop twice'), stop "
+            "conditions ('until the ask feels complete'), scope. These ride "
+            "into the document as max_passes/criterion/config."
+        ),
+    )
+    current: dict | None = Field(
+        default=None,
+        description="Optional current graph document to REVISE instead of designing fresh.",
     )
 
 
@@ -575,6 +599,44 @@ def test_agent_mcp(agent_id: str, req: McpTestRequest):
         "detail": f"connected — {len(tools)} tool(s) advertised",
         "tools": [tool.name for tool in tools],
     }
+
+
+# ── Designer: AI-assisted draft (stateless face 0 — docs/graph-loop-designer.md) ──
+#
+# The user's sentence is the whole input; the stateless core (design/draft.py)
+# proposes a document and the verdict IS backend validate_graph — a red
+# verdict is a normal 200 result (doc + issues), not an error. Only a model
+# that can't be reached / answered at all is a server error.
+
+
+@app.get("/api/designer/catalog")
+def designer_catalog():
+    """The frozen graph language: the closed primitive vocabulary (ports,
+    flags) plus the contract rules — the same data the design prompt is
+    built from, for the chat face and the MCP face to reuse."""
+    return {
+        "primitives": design_catalog.list_primitives(),
+        "rules": design_catalog.RULES,
+    }
+
+
+@app.post("/api/designer/draft")
+def designer_draft(req: DraftRequest):
+    """Design (or revise) a graph loop from natural language.
+
+    {"goal": "..."} — plus optional "notes" (business case: repeat counts,
+    stop conditions, scope) and optional "current" (the document to revise).
+    Returns {"doc": {...}, "verdict": {"ok": bool, "issues": [str, ...]}} —
+    the doc is ALWAYS returned (verbatim, ready to load onto the canvas),
+    and verdict.ok reflects backend validation only.
+    """
+    try:
+        result = design_draft.draft(req.goal, notes=req.notes, current=req.current)
+    except design_draft.DraftError as exc:
+        raise HTTPException(status_code=502, detail=f"design model error: {exc}")
+    except OSError as exc:  # model unreachable / DNS / timeout — a service problem, not a bad design
+        raise HTTPException(status_code=502, detail=f"design model unreachable: {exc}")
+    return {"doc": result.doc, "verdict": result.verdict}
 
 
 @app.get("/health", response_model=HealthResponse)
