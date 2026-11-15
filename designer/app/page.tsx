@@ -40,10 +40,12 @@ import {
   fromDoc,
   toDoc,
   checkCanvas,
+  insertTemplate,
   type CanvasEdge,
   type CanvasGraph,
   type CanvasNode,
   type PrimitiveMeta,
+  type Template,
 } from "./lib/graph";
 import {
   docToDraft,
@@ -409,6 +411,23 @@ export default function Page() {
       if (created) setSelection({ kind: "node", id: created });
     },
     []
+  );
+
+  /** Insert a one-click template (palette "Start from an example"): its
+    *  nodes + typed wires are added RIGHT of the current content, ids
+    *  suffixed on collision, first inserted node selected. */
+  const addTemplate = useCallback(
+    (tpl: Template) => {
+      let first: string | null = null;
+      setGraph((g) => {
+        const res = insertTemplate(g, tpl);
+        first = res.inserted[0] ?? null;
+        return res.canvas;
+      });
+      if (first) setSelection({ kind: "node", id: first });
+      notify(true, `Added the “${tpl.name}” example beside your nodes — tweak it, then save.`);
+    },
+    [notify]
   );
 
   const removeNode = useCallback((id: string) => {
@@ -898,6 +917,14 @@ export default function Page() {
             apiOnline={online === true && apiLive}
             onAdd={addNode}
             onAddAgent={() => addAgentNode()}
+            /* the compatibility light: which primitive the selected node is
+               (null = no selection — the list shows the plain vocabulary) */
+            selectionPrimitive={
+              selection?.kind === "node"
+                ? (graph.nodes.find((n) => n.id === selection.id)?.primitive ?? null)
+                : null
+            }
+            onTemplate={(tpl) => addTemplate(tpl)}
           />
         </aside>
 

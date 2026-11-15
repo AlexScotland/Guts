@@ -10,7 +10,18 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { checkCanvas, FALLBACK_PRIMITIVES, fromDoc } from "./graph.ts";
+import {
+  checkCanvas,
+  FALLBACK_PRIMITIVES,
+  fromDoc,
+  BUDGETED,
+  TEMPLATES,
+  entryEligible,
+  fedBy,
+  feedsInto,
+  insertTemplate,
+  whyNotTypable,
+} from "./graph.ts";
 
 const META = new Map(FALLBACK_PRIMITIVES.map((p) => [p.primitive, p]));
 
@@ -169,6 +180,109 @@ test("non-route graphs are untouched by the route rules", () => {
     edges: [],
   };
   assert.deepEqual(checkCanvas(g, META), []);
+});
+
+// ── compatibility lights (palette dim/raise + canvas ghostwires) ────────
+
+test("feedsInto / fedBy are the two directions of edgeTypable (self excluded)", () => {
+  // research provides context/result:
+  const into = feedsInto("research", META);
+  assert.ok(into.includes("critic"));      // critic accepts result
+  assert.ok(into.includes("plan"));        // plan accepts context
+  assert.ok(into.includes("act"));         // act accepts context
+  assert.ok(!into.includes("gate"));       // gate accepts only verdict
+  assert.ok(!into.includes("prompt"));     // prompt accepts only goal
+  assert.ok(!into.includes("research"));   // self is never listed
+  // who is permitted to wire IN TO act (plan/context/goal):
+  const intoAct = fedBy("act", META);
+  assert.ok(intoAct.includes("research"));
+  assert.ok(intoAct.includes("plan"));
+  assert.ok(!intoAct.includes("critic"));  // verdict/pass are not act inputs
+});
+
+test("entryEligible = the backend's single-entry rule (requires⊆goal, all requires_any include goal)", () => {
+  const eligible = new Set([...META.keys()].filter((p) => entryEligible(p, META)));
+  for (const p of ["prompt", "research", "plan", "parallel", "route", "merge"])
+    assert.ok(eligible.has(p), `${p} should be entry-eligible`);
+  for (const p of ["act", "critic", "gate"])
+    assert.ok(!eligible.has(p), `${p} should not be entry-eligible`);
+});
+
+test("whyNotTypable states reasons from the port table; valid pairs return empty", () => {
+  assert.equal(whyNotTypable("research", "critic", META), "");
+  const msg = whyNotTypable("research", "gate", META);
+  assert.match(msg, /research provides context · result/);
+  assert.match(msg, /gate accepts verdict/);
+  assert.match(whyNotTypable("critic", "research", META), /critic/);
+  assert.match(whyNotTypable("prompt", "prompt", META), /itself/);
+});
+
+// ── templates: structurally valid, insertion safe ──────────────────────────
+
+test("TEMPLATES: single goal-feeding entry, typed data edges, control-only loops, no self-edges", () => {
+  assert.equal(TEMPLATES.length, 2);
+  for (const tpl of TEMPLATES) {
+    const names = Object.keys(tpl.doc.nodes);
+    assert.ok(names.length >= 2, tpl.id);
+    const data = tpl.doc.edges.filter((e) => e.type === "data");
+    const ctl = tpl.doc.edges.filter((e) => e.type === "control");
+    const inDeg = new Map();
+    for (const e of data) inDeg.set(e.to, (inDeg.get(e.to) ?? 0) + 1);
+    const entries = names.filter((n) => !inDeg.has(n));
+    assert.equal(entries.length, 1, `${tpl.id}: exactly one data-entry node`);
+    assert.ok(entryEligible(tpl.doc.nodes[entries[0]].primitive, META), tpl.id);
+    for (const e of data) {
+      assert.notEqual(e.from, e.to, `${tpl.id}: self data edge`);
+      const ok = [...(META.get(tpl.doc.nodes[e.from].primitive)?.provides ?? [])].some(
+        (t) =>
+          t !== "goal" &&
+          (META.get(tpl.doc.nodes[e.to].primitive)?.accepts ?? []).includes(t)
+      );
+      assert.ok(ok, `${tpl.id}: data edge ${e.from}→${e.to} must be typed`);
+    }
+    for (const e of ctl) {
+      const src = tpl.doc.nodes[e.from]?.primitive;
+      assert.ok(src === "critic" || src === "gate", `${tpl.id}: ${e.from} owns a control edge`);
+      assert.ok((e.max_passes ?? 1) >= 1 && Number.isInteger(e.max_passes ?? 1));
+    }
+  }
+});
+
+test("insertTemplate: collision-safe ids, positions to the right of existing content", () => {
+  const empty = { nodes: [], edges: [] };
+  const r1 = insertTemplate(empty, TEMPLATES[0]);
+  assert.equal(r1.canvas.nodes.length, 2);
+  assert.equal(r1.inserted.length, 2);
+
+  // Collision: the canvas already has "dig" and "judge" (the user's own
+  // research loop) — the template must suffix, NEVER overwrite.
+  const taken = fromDoc("t", {
+    nodes: { dig: { primitive: "research" }, judge: { primitive: "critic" } },
+    edges: [],
+  });
+  const r2 = insertTemplate(taken, TEMPLATES[0]);
+  const ids = r2.inserted;
+  assert.ok(ids.includes("dig2"), `renamed: ${ids}`);
+  assert.ok(
+    r2.canvas.nodes.some((n) => n.id === "dig2" && n.primitive === "research"),
+    "suffixed node kept its primitive"
+  );
+  assert.ok(
+    r2.canvas.edges.some((e) => e.from === "dig2" || e.to === "dig2"),
+    "edges are remapped onto the suffixed id"
+  );
+  // Offset: new content lies to the right of the rightmost existing node.
+  const maxX = Math.max(...taken.nodes.map((n) => n.x));
+  for (const n of r2.canvas.nodes)
+    if (r2.inserted.includes(n.id)) assert.ok(n.x > maxX, "inserted nodes offset right");
+
+  // A second insertion into an already-suffixed canvas keeps incrementing.
+  const r3 = insertTemplate(r2.canvas, TEMPLATES[0]);
+  assert.ok(r3.inserted.includes("dig3"), `stepped: ${r3.inserted}`);
+});
+
+test("BUDGETED reflects the backend's PortShape budgeted=True set", () => {
+  assert.deepEqual([...BUDGETED].sort(), ["act", "research", "route"]);
 });
 
 // ── click vs drag (the on-node inspector popover) ────────────────────────

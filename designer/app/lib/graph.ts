@@ -254,6 +254,177 @@ export function edgeTypable(
   return provides.some((t) => accepts.includes(t));
 }
 
+// ── compatibility lights (palette highlighting + canvas ghost-wires) ────────
+// ONE direction of the same predicate the canvas uses for live edges
+// (edgeTypable: source's outputs ∩ target's accepted types, `goal` excluded —
+// the graph input, not an edge payload). The palette's dimming/chips and the
+// canvas' "valid unconnected wire" hints are all computed off these helpers,
+// so what is HIGHLIGHTED is exactly what the wire layer would accept.
+
+/** The vocabulary as names (the meta map's key order). */
+function keysOf(meta: Map<string, PrimitiveMeta>): string[] {
+  return [...meta.keys()];
+}
+
+/** Local mirror of the backend's `budgeted=True` node list (PortShape in
+ *  schemas/graph.py: research / act / route). The API primitive card does
+ *  NOT carry `budgeted` (registry.py `_primitive_view`), so the ⚡ badge is
+ *  derived from this constant — keep it in sync with PRIMITIVES. */
+export const BUDGETED = new Set<string>(["research", "act", "route"]);
+
+/** Primitives that `source` may wire INTO (a `source → p` data wire is valid). */
+export function feedsInto(source: string, meta: Map<string, PrimitiveMeta>): string[] {
+  return keysOf(meta).filter((p) => p !== source && edgeTypable(source, p, meta));
+}
+
+/** Primitives that may wire INTO `target` (a `p → target` data wire is valid). */
+export function fedBy(target: string, meta: Map<string, PrimitiveMeta>): string[] {
+  return keysOf(meta).filter((p) => p !== target && edgeTypable(p, target, meta));
+}
+
+/** Entry-eligible node: `requires` ⊆ {"goal"} and EVERY `requires_any` group
+ *  contains `goal` (the backend's single-entry rule, schemas/graph.py — goal
+ *  is the only graph-level input, so the entry's inputs must be satisfiable
+ *  with nothing wired in). The backend validator stays the authority; this
+ *  drives the palette's ★ badge. */
+export function entryEligible(primitive: string, meta: Map<string, PrimitiveMeta>): boolean {
+  const m = meta.get(primitive);
+  if (!m) return false;
+  if (!m.requires.every((t) => t === GOAL)) return false;
+  return m.requires_any.every((g) => g.includes(GOAL));
+}
+
+/** One-line human reason a `source → target` wire CANNOT exist, straight off
+ *  the port table. Empty string ⟺ the wire is valid (edgeTypable true). */
+export function whyNotTypable(
+  source: string,
+  target: string,
+  meta: Map<string, PrimitiveMeta>
+): string {
+  if (source === target) return "A node cannot wire into itself.";
+  const s = meta.get(source);
+  const t = meta.get(target);
+  if (!s || !t) return "Unknown primitive.";
+  if (edgeTypable(source, target, meta)) return "";
+  const list = (xs: PortType[]): string =>
+    xs.length ? xs.join(" · ") : "nothing but the graph input `goal`";
+  return `${source} provides ${list(s.provides)} — ${target} accepts ${list(t.accepts)}.`;
+}
+
+// ── one-click template graphs ────────────────────────────────────────────────
+// Tiny, structurally-valid starting canvases for the "Start from an example"
+// palette section: one goal-fed entry node each, every data edge typed per
+// the port table, the only cycle a bounded control edge from a critic — the
+// same shape as app/graphs/research-loop.json. Validated against the backend
+// validator (app/schemas/graph.py), the final authority before save.
+
+export interface Template {
+  id: string;
+  name: string;
+  description: string;
+  doc: GraphDoc;
+}
+
+export const TEMPLATES: Template[] = [
+  {
+    id: "research-loop",
+    name: "research → judge → re-research",
+    description:
+      "The bounded retry loop: research gathers context, a critic judges it, and on a failing verdict the loop re-runs the research (≤3 bounces). Prior passes ride along as context, so each pass refines the last.",
+    doc: {
+      name: "research-loop",
+      version: "1.0",
+      budget: 240,
+      nodes: {
+        dig: {
+          primitive: "research",
+          budget: 40,
+          config: {
+            task: "Read-only research: gather authoritative, up-to-date context that answers the goal. On later passes you get 'Prior context' above the goal — build on it and close the gaps the critic flagged. Do NOT modify files or anything outside this task.",
+          },
+        },
+        judge: { primitive: "critic", config: {} },
+      },
+      edges: [
+        { from: "dig", to: "judge", type: "data" },
+        { from: "judge", to: "dig", type: "control", max_passes: 3 },
+      ],
+    },
+  },
+  {
+    id: "collect-plan-act",
+    name: "research → plan → act",
+    description:
+      "A straight data pipeline (no loop): gather context, shape it into a concrete plan, then act on it. A good skeleton for any multi-step task.",
+    doc: {
+      name: "collect-plan-act",
+      version: "1.0",
+      budget: 120,
+      nodes: {
+        gather: {
+          primitive: "research",
+          budget: 40,
+          config: {
+            task: "Gather the authoritative context needed to plan and finish the goal; keep the strongest sources handy for the plan.",
+          },
+        },
+        plan: {
+          primitive: "plan",
+          config: {
+            task: "Turn the gathered context into a concrete, ordered plan for finishing the goal.",
+          },
+        },
+        do: {
+          primitive: "act",
+          budget: 40,
+          config: { task: "Execute the plan and report what you did and what changed." },
+        },
+      },
+      edges: [
+        { from: "gather", to: "plan", type: "data" },
+        { from: "plan", to: "do", type: "data" },
+      ],
+    },
+  },
+];
+
+/** Insert a template's nodes + edges into an existing canvas: id collisions
+ *  get a numeric suffix (NEVER overwrite existing nodes), positions offset
+ *  right of the current content. Returns the merged canvas and the inserted
+ *  ids in template order. Pure — page state decides what happens next. */
+export function insertTemplate(g: CanvasGraph, tpl: Template): {
+  canvas: CanvasGraph;
+  inserted: string[];
+} {
+  const frag = fromDoc(tpl.id, tpl.doc);
+  const taken = new Set(g.nodes.map((n) => n.id));
+  const idMap = new Map<string, string>();
+  for (const n of frag.nodes) {
+    let nid = n.id;
+    let k = 2;
+    while (taken.has(nid)) nid = `${n.id}${k++}`;
+    taken.add(nid);
+    idMap.set(n.id, nid);
+  }
+  const fragLeft = frag.nodes.length ? Math.min(...frag.nodes.map((n) => n.x)) : 0;
+  const rightmost = g.nodes.length ? Math.max(...g.nodes.map((n) => n.x + NODE_W)) : 60;
+  const dx = Math.max(0, rightmost + 80 - fragLeft);
+  const nodes: CanvasNode[] = frag.nodes.map((n) => ({
+    ...n,
+    id: idMap.get(n.id) as string,
+    x: n.x + dx,
+  }));
+  const edges: CanvasEdge[] = frag.edges.map((e) => ({
+    ...e,
+    from: idMap.get(e.from) as string,
+    to: idMap.get(e.to) as string,
+  }));
+  return {
+    canvas: { ...g, nodes: [...g.nodes, ...nodes], edges: [...g.edges, ...edges] },
+    inserted: nodes.map((n) => n.id),
+  };
+}
+
 // ── document ⇄ canvas ─────────────────────────────────────────────────────
 
 const TOKEN_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;

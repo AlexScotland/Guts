@@ -100,6 +100,17 @@
   opacity: 0.8;
 }
 
+/* Ghost wires: valid-but-UNCONNECTED, previewed around the selected node
+   (the palette highlights the same compatibility from the left-menu side).
+   Deliberately fainter than the drag preview so the live wire wins. */
+.hint {
+  stroke: var(--ok);
+  stroke-width: 2;
+  stroke-dasharray: 3 6;
+  stroke-linecap: round;
+  opacity: 0.45;
+}
+
 .empty {
   position: absolute;
   inset: 0;

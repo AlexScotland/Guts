@@ -412,6 +412,43 @@ export default function Canvas({
 
   const cg = connectGeom();
 
+  // Ghost wires: while a node is selected, preview every valid wire that
+  // DOESN'T EXIST yet — one out of it, one into it. Same predicate as a live
+  // edge (edgeTypable), so a hint is exactly what the drag would accept; the
+  // palette chips show the same compatibility from the left-menu side.
+  const hints = useMemo(() => {
+    if (selection?.kind !== "node") return [];
+    const sel = byId.get(selection.id);
+    if (!sel) return [];
+    const outPt: [number, number] = [sel.x + NODE_W, sel.y + anchorY(0)];
+    const inPt: [number, number] = [sel.x, sel.y + anchorY(0)];
+    const res: { d: string; label: string }[] = [];
+    for (const n of graph.nodes) {
+      if (n.id === sel.id) continue;
+      const tIn: [number, number] = [n.x, n.y + anchorY(0)];
+      if (
+        edgeTypable(sel.primitive, n.primitive, meta) &&
+        !graph.edges.some((e) => e.from === sel.id && e.to === n.id)
+      ) {
+        res.push({
+          d: bezier(outPt[0], outPt[1], tIn[0], tIn[1], tIn[0] < outPt[0] - 10),
+          label: `${sel.id} → ${n.id} would be a valid wire (drag from the ${sel.id} output)`,
+        });
+      }
+      const nOut: [number, number] = [n.x + NODE_W, n.y + anchorY(0)];
+      if (
+        edgeTypable(n.primitive, sel.primitive, meta) &&
+        !graph.edges.some((e) => e.from === n.id && e.to === sel.id)
+      ) {
+        res.push({
+          d: bezier(nOut[0], nOut[1], inPt[0], inPt[1], inPt[0] < nOut[0] - 10),
+          label: `${n.id} → ${sel.id} would be a valid wire (drag from the ${n.id} output)`,
+        });
+      }
+    }
+    return res;
+  }, [selection, byId, graph.nodes, graph.edges, meta]);
+
   return (
     <div
       ref={viewportRef}
@@ -467,6 +504,18 @@ export default function Canvas({
               </g>
             );
           })}
+          {/* Ghost wires: valid but unconnected, around the selected node. */}
+          {hints.map((h, i) => (
+            <path
+              key={`hint-${i}-${h.label}`}
+              d={h.d}
+              className={styles.hint}
+              fill="none"
+              pointerEvents="none"
+            >
+              <title>{h.label}</title>
+            </path>
+          ))}
           {cg && (
             <path d={cg.d} className={styles.ghost} fill="none" pointerEvents="none" />
           )}

@@ -85,3 +85,60 @@
   font-size: 10.5px;
   color: var(--text-faint);
 }
+
+/* One-line readout under the title while a canvas node is selected: the
+   palette is acting as a "what can I add next?" light. */
+.hintline {
+  margin: 0 8px 2px;
+  padding: 0 2px 4px;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--text-faint);
+}
+
+/* ── compatibility chips + contextual state ────────────────────────────── */
+
+.chip {
+  font-size: 9.5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 6px;
+  margin-left: 6px;
+  color: var(--text-faint);
+  background: var(--bg-soft);
+  white-space: nowrap;
+}
+
+.chipEntry {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+}
+
+.chipLoop {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+}
+
+.chipBudget {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.chipCompat {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  font-weight: 600;
+}
+
+.compatible {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+}
+
+/* Dimmed: a valid wire in NO direction exists with the selection — the
+   one-line reason lives in the tooltip. */
+.dim {
+  opacity: 0.45;
+  border-style: dashed;
+}
