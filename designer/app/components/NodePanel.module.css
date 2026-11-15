@@ -153,6 +153,333 @@
   color: var(--text-faint);
 }
 
+/* ── branch manager (parallel, drawer edition) ──────────────────
+ * Structured view replacing the bare JSON box: per-branch card with a
+ * read-only mini-diagram, node/edge rows and live branch checks.
+ * Raw JSON stays available as the escape-hatch mode (see NodePanel). */
+
+.branchHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.branchMode {
+  display: flex;
+  gap: 4px;
+}
+
+.mode,
+.modeOn {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  border: 1px solid var(--border-soft);
+  cursor: pointer;
+}
+
+.modeOn {
+  background: var(--bg-soft);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.branchCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+
+.branchCardHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.branchCardHead > input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 12.5px;
+  padding: 4px 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.branchCardHead .budget {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.branchCardHead .budget input {
+  width: 52px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 12.5px;
+  padding: 4px 6px;
+}
+
+.branchRemove {
+  background: transparent;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  color: var(--text-faint);
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.branchRemove:hover {
+  color: var(--error);
+  border-color: color-mix(in srgb, var(--error) 45%, transparent);
+}
+
+.branchIssues {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11.5px;
+}
+
+.branchIssues .okLine {
+  color: var(--ok);
+}
+
+.branchIssues .errLine {
+  color: var(--error);
+}
+
+.branchMini {
+  align-self: flex-start;
+  background: var(--surface);
+  border: 1px dashed var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+}
+
+.branchNodeBox {
+  fill: var(--bg-soft);
+  stroke: var(--border);
+}
+
+.branchNodePri {
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--text);
+}
+
+.branchNodeId {
+  font-size: 9.5px;
+  fill: var(--text-faint);
+  font-family: var(--mono);
+}
+
+.branchPort {
+  font-size: 8.5px;
+  fill: var(--text-muted);
+  font-family: var(--mono);
+}
+
+.edgeData {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  opacity: 0.75;
+}
+
+.edgeControl {
+  fill: none;
+  stroke: var(--warn);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.miniEmpty {
+  font-size: 11px;
+  color: var(--text-faint);
+  padding: 4px 6px;
+}
+
+.rowList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rowListHead {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+}
+
+.nodeRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+
+.nodeRowHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.nodeRowHead .nid {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.nodeRowHead .spacer {
+  flex: 1;
+}
+
+.nodeRowHead select,
+.edgeRow select {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 11.5px;
+  padding: 3px 5px;
+}
+
+.nodeRowHead .budget {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.nodeRowHead .budget input {
+  width: 46px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 11.5px;
+  padding: 3px 5px;
+}
+
+.cfgRow {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.cfgRow textarea {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 4px 6px;
+  resize: vertical;
+}
+
+.cfgRow textarea.cfgBad {
+  border-color: var(--error);
+}
+
+.addRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.addRow select {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 11.5px;
+  padding: 4px 6px;
+}
+
+.addBtn {
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 11.5px;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.addBtn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.addBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.edgeRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 5px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+
+.edgeRow .arrow {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.edgeRow .spacer {
+  flex: 1;
+}
+
+.xBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-faint);
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 5px;
+  cursor: pointer;
+}
+
+.xBtn:hover {
+  color: var(--error);
+}
+
 /* ── route node config (v1, docs/ai-routing-nodes.md) ───────────────── */
 
 .routebox {

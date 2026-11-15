@@ -551,6 +551,113 @@ export interface CheckIssue {
 
 /** Cheap structural checks that catch the obvious before save; the real
  *  authority is the server validator (POST /api/graphs → 400 detail). */
+// ── parallel branch validation (the drawer edition's ruleset) ──────────────
+// Mirrors the backend contract (app/components/primitives/parallel.py +
+// schemas/graph.py, the AUTHORITY — a branch graph validates recursively and
+// run-time rejects side-effecters inside): a branch is a small valid graph on
+// a FRESH blackboard — at least one node, exactly ONE entry (the single
+// node with no data input, shape-eligible for goal), data edges
+// shape-compatible, control edges only from critic|gate with max_passes ≥ 1,
+// and no `act` (side-effects) anywhere inside. `parallel` is not checked for
+// NESTING here — the structured designer editor keeps it flat on purpose and
+// the raw-JSON escape hatch remains the full-power path.
+
+export function checkBranch(
+  branch: BranchSpec,
+  meta: Map<string, PrimitiveMeta>
+): CheckIssue[] {
+  const issues: CheckIssue[] = [];
+  const g = branch.graph ?? { nodes: {}, edges: [] };
+  const ids = Object.keys(g.nodes);
+  const label = `branch "${branch.name}"`;
+  if (ids.length === 0) {
+    issues.push({ severity: "error", message: `${label}: add at least one node.` });
+    return issues;
+  }
+  for (const id of ids) {
+    const spec = g.nodes[id];
+    if (!meta.has(spec.primitive)) {
+      issues.push({
+        severity: "error",
+        message: `${label}: unknown primitive "${spec.primitive}" on node "${id}".`,
+      });
+    }
+    if (spec.primitive === "act") {
+      issues.push({
+        severity: "error",
+        message: `${label}: "act" nodes are rejected inside branches — conversation commits stay serial. Keep side-effect steps on the parent graph.`,
+      });
+    }
+  }
+  // Exactly one entry: the single node with no data input, entry-eligible.
+  const dataIn = new Set<string>();
+  for (const e of g.edges) if (e.type === "data") dataIn.add(e.to);
+  const zeroIn = ids.filter((id) => !dataIn.has(id));
+  if (zeroIn.length === 0) {
+    issues.push({
+      severity: "error",
+      message: `${label}: every node has a data input — need exactly one node WITHOUT a data input (the entry).`,
+    });
+  } else if (zeroIn.length > 1) {
+    issues.push({
+      severity: "error",
+      message: `${label}: ${zeroIn.length} nodes have no data input (${zeroIn.join(", ")}); a branch needs exactly one entry.`,
+    });
+  } else if (!entryEligible(g.nodes[zeroIn[0]].primitive, meta)) {
+    issues.push({
+      severity: "error",
+      message: `${label}: entry node "${zeroIn[0]}" (${g.nodes[zeroIn[0]].primitive}) must be feedable by the goal alone (requires ⊆ goal).`,
+    });
+  }
+  for (const e of g.edges) {
+    if (e.from === e.to) {
+      issues.push({ severity: "error", message: `${label}: edge ${e.from} → ${e.to}: self-edge not allowed.` });
+    }
+    if (!g.nodes[e.from] || !g.nodes[e.to]) {
+      issues.push({ severity: "error", message: `${label}: edge ${e.from} → ${e.to}: endpoint missing (node removed?).` });
+      continue;
+    }
+    if (e.type === "data") {
+      const fromP = g.nodes[e.from].primitive;
+      const toP = g.nodes[e.to].primitive;
+      if (meta.has(fromP) && meta.has(toP) && !edgeTypable(fromP, toP, meta)) {
+        issues.push({
+          severity: "error",
+          message: `${label}: ${fromP} → ${toP} is not a shape-compatible data wire.`,
+        });
+      }
+    } else {
+      if (!isControlSource(g.nodes[e.from].primitive)) {
+        issues.push({
+          severity: "error",
+          message: `${label}: control edge ${e.from} → ${e.to}: only verdict nodes (critic/gate) may repeat.`,
+        });
+      }
+      if (e.max_passes == null || e.max_passes < 1) {
+        issues.push({
+          severity: "error",
+          message: `${label}: control edge ${e.from} → ${e.to} needs max_passes (>= 1).`,
+        });
+      }
+    }
+  }
+  return issues;
+}
+
+/** Collision-safe inner-branch node id for `primitive`, given the branch's
+ *  existing node ids (mirror of insertTemplate's dig→dig2→dig3 scheme). */
+export function nextBranchNodeId(existing: string[], primitive: string): string {
+  if (!existing.includes(primitive)) return primitive;
+  let k = 2;
+  while (existing.includes(`${primitive}${k}`)) k += 1;
+  return `${primitive}${k}`;
+}
+
+/** The inner node ids in declared order, for the card summary ("a → b"). */
+export function branchChain(branch: BranchSpec): string[] {
+  return Object.keys(branch.graph?.nodes ?? {});
+}
+
 export function checkCanvas(g: CanvasGraph, meta: Map<string, PrimitiveMeta>): CheckIssue[] {
   const issues: CheckIssue[] = [];
   if (g.nodes.length === 0) {
@@ -569,11 +676,18 @@ export function checkCanvas(g: CanvasGraph, meta: Map<string, PrimitiveMeta>): C
         severity: "error",
         message: `Unknown primitive "${n.primitive}" on node "${n.id}".`,
       });
-    if (n.primitive === "parallel" && n.branches.length === 0)
-      issues.push({
-        severity: "error",
-        message: `Node "${n.id}": parallel needs at least one branch.`,
-      });
+    if (n.primitive === "parallel") {
+      if (n.branches.length === 0)
+        issues.push({
+          severity: "error",
+          message: `Node "${n.id}": parallel needs at least one branch.`,
+        });
+      // Branches validate too (fresh blackboard, exactly one entry, no
+      // act-inside, shape-compatible inner edges) — same contract the
+      // backend enforces, mirrored cheaply for the lights.
+      for (const br of n.branches)
+        for (const iss of checkBranch(br, meta)) issues.push(iss);
+    }
     // route (v1, docs/ai-routing-nodes.md): the choice set is the outgoing
     // data edges and config.options must equal it EXACTLY — same rules the
     // server validator enforces (the authority), mirrored cheaply here.

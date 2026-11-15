@@ -171,3 +171,34 @@ door.**
 - Do `parallel` branch definitions live in the graph doc inline, or as named sub-graphs? (Leaning inline for v0.)
 - Graph versioning on rename/edit: new id vs. in-place? (Leaning new id; JSON files are the store.)
 - Is `critic`'s verdict an LLM call in v0, or reuses `evaluator` heuristics + optional LLM? (Leaning: LLM with a schema, fakes in tests.)
+
+## Planned features (flagged 2026-10-14)
+
+- **Branch visualization for `parallel`** — BUILT (2026-11-15):
+  NodePanel's branch editor is now a branch manager: a **structured
+  card per branch** (rename name, add/remove branches; budget; add
+  inner nodes — `parallel` hidden from the primitive choices since
+  structured mode is flat; per-node config JSON that applies only on a
+  valid object parse; inner data/control edges with `max_passes`,
+  control FROM pre-filtered to critic/gate) plus a **read-only
+  mini-diagram** per branch (nodes in declared order, in/out ports,
+  solid data wires, dashed control wires). Live `checkBranch`
+  feedback lights the card ok/err — mirroring the runtime contract
+  (single entry, no `act` inside, shape-compatible wires) — and is
+  also surfaced by `checkCanvas` on the parent canvas. The raw-JSON
+  editor survives as the **escape-hatch mode** (nested `parallel` and
+  any shape the validator accepts — the backend `validate_graph` stays
+  the authority). Single-stack (designer only), no backend change.
+- **AI-assisted design — one stateless surface, two faces** (not built):
+  Face 0 `app/design/` stateless core — `draft(goal, notes?, current?)
+  -> {doc, verdict}` with `validate_graph` the only door to green, plus
+  `list_primitives`/`ports_of`/`wire_check`, exposed as
+  `POST /api/designer/draft`. Face 1: MCP server over the same tools
+  (FastMCP; new pinned `mcp` dep — this repo consumes MCP but has never
+  served it). Face 2: in-designer chat panel (local history only, no
+  server sessions) with [Insert beside canvas] reusing
+  collision-safe `insertTemplate`, or [Replace]. Agreement: judgment
+  ("loop twice?") is a business case — it rides in goal/notes and the
+  consumer's config; the surface only expresses it in the frozen graph
+  language. Invariant: "make it loop twice" must be achievable via
+  notes alone, with zero designer code change.

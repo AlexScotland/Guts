@@ -313,3 +313,173 @@ test("beyond the threshold it is a drag", () => {
   // A real drag comfortably exceeds the threshold within a few px.
   assert.ok(!grabIsCleanClick({ x: 100, y: 100 }, { x: 110, y: 120 }));
 });
+
+// ── parallel branches (drawer edition: checkBranch + id stepping) ─────
+//
+// checkBranch mirrors the runtime contract in app/components/primitives/
+// parallel.py: fresh blackboard (exactly one entry), no act inside,
+// shape-compatible inner edges, control only from critic/gate.
+
+import { checkBranch, nextBranchNodeId, branchChain } from "./graph.ts";
+
+const br = (name, nodes, edges = []) => ({ name, graph: { nodes, edges } });
+
+test("checkBranch accepts a valid two-node branch (research → critic)", () => {
+  assert.deepEqual(
+    checkBranch(
+      br("web", { dig: { primitive: "research" }, judge: { primitive: "critic" } }, [
+        { from: "dig", to: "judge", type: "data" },
+      ]),
+      META
+    ),
+    []
+  );
+});
+
+test("checkBranch accepts a critic loop inside a branch (research ⇄ critic)", () => {
+  assert.deepEqual(
+    checkBranch(
+      br("loop", { dig: { primitive: "research" }, judge: { primitive: "critic" } }, [
+        { from: "dig", to: "judge", type: "data" },
+        { from: "judge", to: "dig", type: "control", max_passes: 2 },
+      ]),
+      META
+    ),
+    []
+  );
+});
+
+test("checkBranch rejects a side-effect act inside a branch", () => {
+  const issues = checkBranch(
+    br("commit", { dig: { primitive: "research" }, dox: { primitive: "act" } }, [
+      { from: "dig", to: "dox", type: "data" },
+    ]),
+    META
+  );
+  assert.ok(
+    issues.some((i) => /"act".*rejected inside branches/.test(i.message)),
+    `got: ${JSON.stringify(issues)}`
+  );
+});
+
+test("checkBranch: empty branch has no entry", () => {
+  const issues = checkBranch(br("empty", {}), META);
+  assert.ok(
+    issues.some((i) => /no entry|at least one/.test(i.message)),
+    `got: ${JSON.stringify(issues)}`
+  );
+});
+
+test("checkBranch: two zero-input nodes = two candidates, flagged with both ids", () => {
+  const issues = checkBranch(
+    br("x2", { r1: { primitive: "research" }, r2: { primitive: "research" } }),
+    META
+  );
+  assert.ok(
+    issues.some((i) => /exactly one (entry|candidate)/.test(i.message) && i.message.includes("r1") && i.message.includes("r2")),
+    `got: ${JSON.stringify(issues)}`
+  );
+});
+
+test("checkBranch: the single entry must be feedable from the goal alone", () => {
+  // critic requires `result` — a branch containing ONLY a critic has one
+  // zero-input node, but it cannot be the goal-fed entry.
+  const issues = checkBranch(br("solo", { gate: { primitive: "gate" } }), META);
+  assert.ok(
+    issues.some((i) => /feedable.*goal|entry/.test(i.message)),
+    `got: ${JSON.stringify(issues)}`
+  );
+});
+
+test("checkBranch: shape-incompatible data edge is flagged (plan → critic)", () => {
+  const issues = checkBranch(
+    br("x", { p: { primitive: "plan" }, c: { primitive: "critic" } }, [
+      { from: "p", to: "c", type: "data" },
+    ]),
+    META
+  );
+  assert.ok(
+    issues.some((i) => /shape-compatible data wire/.test(i.message)),
+    `got: ${JSON.stringify(issues)}`
+  );
+});
+
+test("checkBranch: control edge from a non-verdict node is rejected", () => {
+  const issues = checkBranch(
+    br("x", { p: { primitive: "plan" }, c: { primitive: "critic" } }, [
+      { from: "p", to: "c", type: "control", max_passes: 2 },
+    ]),
+    META
+  );
+  assert.ok(
+    issues.some((i) => /only (critic|gate)|control/.test(i.message)),
+    `got: ${JSON.stringify(issues)}`
+  );
+});
+
+test("checkBranch: control edge without max_passes is flagged", () => {
+  const issues = checkBranch(
+    br("x", { p: { primitive: "plan" }, c: { primitive: "critic" } }, [
+      { from: "c", to: "p", type: "control" },
+    ]),
+    META
+  );
+  assert.ok(
+    issues.some((i) => /max_passes/.test(i.message)),
+    `got: ${JSON.stringify(issues)}`
+  );
+});
+
+test("checkBranch messages are labeled with the branch name", () => {
+  const issues = checkBranch(br("mybranch", { dox: { primitive: "act" } }), META);
+  assert.ok(issues.every((i) => i.message.startsWith('branch "mybranch"')));
+});
+
+test("checkCanvas surfaces branch issues through the canvas check", () => {
+  const g = {
+    id: "g",
+    name: "g",
+    budget: null,
+    max_parallel: null,
+    nodes: [
+      {
+        id: "fan",
+        primitive: "parallel",
+        x: 0,
+        y: 0,
+        config: {},
+        budget: null,
+        branches: [
+          br("web", { dig: { primitive: "research" }, dox: { primitive: "act" } }, [
+            { from: "dig", to: "dox", type: "data" },
+          ]),
+          br("kb", {}),
+        ],
+      },
+    ],
+    edges: [],
+  };
+  const issues = checkCanvas(g, META);
+  assert.ok(issues.some((i) => /"act".*rejected inside branches/.test(i.message)));
+  assert.ok(
+    issues.some((i) => i.message.includes('branch "kb"') && /no entry|at least one/.test(i.message)),
+    `got: ${JSON.stringify(issues)}`
+  );
+});
+
+test("nextBranchNodeId steps base → base2 → base3 like the template scheme", () => {
+  assert.equal(nextBranchNodeId([], "research"), "research");
+  assert.equal(nextBranchNodeId(["research"], "research"), "research2");
+  assert.equal(nextBranchNodeId(["research", "research2"], "research"), "research3");
+  assert.equal(nextBranchNodeId(["research", "research2", "research3"], "research"), "research4");
+});
+
+test("branchChain returns nodes in declared order", () => {
+  assert.deepEqual(
+    branchChain(br("x", { a: { primitive: "research" }, b: { primitive: "critic" } }, [
+      { from: "a", to: "b", type: "data" },
+    ])),
+    ["a", "b"]
+  );
+  assert.deepEqual(branchChain(br("empty", {})), []);
+});

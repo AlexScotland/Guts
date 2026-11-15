@@ -15,8 +15,9 @@ import type {
   CanvasNode,
   PrimitiveMeta,
 } from "../lib/graph";
-import type { BranchSpec } from "../lib/types";
+import type { BranchNodeSpec, BranchSpec, EdgeSpec } from "../lib/types";
 import { type NodeOutputs, truncateLabel } from "../lib/run";
+import { branchChain, checkBranch, isControlSource, nextBranchNodeId } from "../lib/graph";
 
 interface Props {
   node: CanvasNode;
@@ -211,7 +212,7 @@ export default function NodePanel({
       )}
 
       {node.primitive === "parallel" && (
-        <BranchEditor node={node} onBranches={(b) => onBranches(node.id, b)} />
+        <BranchManager node={node} meta={meta} onBranches={(b) => onBranches(node.id, b)} />
       )}
     </div>
   );
@@ -449,16 +450,599 @@ function OutputValue({ value }: { value: unknown }) {
   return <pre className={styles.outText}>{String(value)}</pre>;
 }
 
-// ── branch editor (parallel only) ─────────────────────────────────────────
+// ── branch manager (parallel only) ──────────────────────────────────────
+// Drawer edition of branch visualization: a structured view per branch
+// (read-only mini-diagram + node/edge rows + live checkBranch lights)
+// INSTEAD of the bare JSON box, which stays available as the "raw JSON"
+// escape-hatch mode. Deliberate limits (the backend validator stays the
+// authority): inner graphs are kept FLAT (no nested `parallel` — express
+// it via raw JSON), node ids are stable (rename = delete + re-add), and
+// nothing here is interactive-wire: branches run on fresh blackboards, so
+// a nested editable canvas would lie about the isolation contract.
 
-function BranchEditor({
+function BranchManager({
   node,
+  meta,
   onBranches,
 }: {
   node: CanvasNode;
+  meta: Map<string, PrimitiveMeta>;
   onBranches: (b: BranchSpec[]) => void;
 }) {
+  const [mode, setMode] = useState<"structured" | "json">("structured");
   const branches = node.branches;
+  const setAt = (i: number, b: BranchSpec) =>
+    onBranches(branches.map((x, j) => (j === i ? b : x)));
+
+  return (
+    <div className={styles.branchbox}>
+      <div className={styles.branchHead}>
+        <h3>Inline branches</h3>
+        <div className={styles.branchMode}>
+          <button
+            type="button"
+            className={mode === "structured" ? styles.modeOn : styles.mode}
+            onClick={() => setMode("structured")}
+          >
+            structure
+          </button>
+          <button
+            type="button"
+            className={mode === "json" ? styles.modeOn : styles.mode}
+            onClick={() => setMode("json")}
+          >
+            raw JSON
+          </button>
+        </div>
+      </div>
+      <p className={styles.hint}>
+        Each branch is a mini-graph on a <em>fresh blackboard</em>: exactly
+        one entry, no <code>act</code> inside, results merged in DECLARED
+        order. The branch runs in isolation — a nested wire-canvas would
+        mislead, so its diagram is read-only.
+      </p>
+
+      {mode === "json" ? (
+        <RawBranchEditor branches={branches} onBranches={onBranches} />
+      ) : (
+        <>
+          {branches.map((br, i) => (
+            <BranchCard
+              key={`${br.name}-${i}`}
+              branch={br}
+              meta={meta}
+              onChange={(b) => setAt(i, b)}
+              onRemove={() =>
+                onBranches(branches.filter((_, j) => j !== i))
+              }
+            />
+          ))}
+          <button
+            type="button"
+            className={styles.addBtn}
+            onClick={() =>
+              onBranches([
+                ...branches,
+                { name: freshBranchName(branches), graph: { nodes: {}, edges: [] } },
+              ])
+            }
+          >
+            + add branch
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function freshBranchName(branches: BranchSpec[]): string {
+  const used = new Set(branches.map((b) => b.name));
+  if (!used.has("branch")) return "branch";
+  let k = 2;
+  while (used.has(`branch${k}`)) k += 1;
+  return `branch${k}`;
+}
+
+/** One branch card: name/budget + mini-diagram + node rows + edge rows +
+ *  live checkBranch lights (the same rules the backend enforces). */
+function BranchCard({
+  branch,
+  meta,
+  onChange,
+  onRemove,
+}: {
+  branch: BranchSpec;
+  meta: Map<string, PrimitiveMeta>;
+  onChange: (b: BranchSpec) => void;
+  onRemove: () => void;
+}) {
+  const g = branch.graph;
+  const ids = Object.keys(g.nodes);
+  const issues = checkBranch(branch, meta);
+  const controlSources = ids.filter((id) => isControlSource(g.nodes[id].primitive));
+
+  const removeNode = (id: string) => {
+    const nodes = { ...g.nodes };
+    delete nodes[id];
+    onChange({ ...branch, graph: { ...g, nodes } });
+  };
+
+  return (
+    <div className={styles.branchCard}>
+      <div className={styles.branchCardHead}>
+        <input
+          value={branch.name}
+          spellCheck={false}
+          aria-label="branch name"
+          onChange={(e) => onChange({ ...branch, name: e.target.value })}
+        />
+        <label className={styles.budget}>
+          budget
+          <input
+            type="number"
+            min={0}
+            aria-label="branch budget"
+            value={branch.budget ?? ""}
+            placeholder="∞"
+            onChange={(e) =>
+              onChange({
+                ...branch,
+                budget: e.target.value === "" ? null : Number(e.target.value),
+              })
+            }
+          />
+        </label>
+        <button type="button" className={styles.branchRemove} onClick={onRemove}>
+          remove branch
+        </button>
+      </div>
+
+      {ids.length > 1 && (
+        <span className={styles.hint}>{branchChain(branch).join(" → ")}</span>
+      )}
+
+      <div className={styles.branchIssues}>
+        {issues.length === 0 ? (
+          <span className={styles.okLine}>branch checks: all clear</span>
+        ) : (
+          issues.map((iss, i) => (
+            <span key={i} className={styles.errLine}>
+              {iss.message}
+            </span>
+          ))
+        )}
+      </div>
+
+      <BranchMiniGraph branch={branch} meta={meta} />
+
+      <div className={styles.rowList}>
+        <span className={styles.rowListHead}>nodes</span>
+        {ids.map((id) => (
+          <InnerNodeRow
+            key={id}
+            id={id}
+            spec={g.nodes[id]}
+            meta={meta}
+            onChange={(patch) =>
+              onChange({
+                ...branch,
+                graph: {
+                  ...g,
+                  nodes: { ...g.nodes, [id]: { ...g.nodes[id], ...patch } },
+                },
+              })
+            }
+            onRemove={() => removeNode(id)}
+          />
+        ))}
+        <AddNodeRow meta={meta} onAdd={(p) => {
+          const id = nextBranchNodeId(ids, p);
+          onChange({ ...branch, graph: { ...g, nodes: { ...g.nodes, [id]: { primitive: p } } } });
+        }} />
+      </div>
+
+      <div className={styles.rowList}>
+        <span className={styles.rowListHead}>edges</span>
+        {g.edges.map((e, i) => (
+          <InnerEdgeRow
+            key={i}
+            edge={e}
+            ids={ids}
+            controlSources={controlSources}
+            onChange={(patch) =>
+              onChange({
+                ...branch,
+                graph: {
+                  ...g,
+                  edges: g.edges.map((x, j) => (j === i ? { ...x, ...patch } : x)),
+                },
+              })
+            }
+            onRemove={() =>
+              onChange({
+                ...branch,
+                graph: { ...g, edges: g.edges.filter((_, j) => j !== i) },
+              })
+            }
+          />
+        ))}
+        <AddEdgeRow
+          ids={ids}
+          controlSources={controlSources}
+          onAdd={(e) => onChange({ ...branch, graph: { ...g, edges: [...g.edges, e] } })}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** Read-only mini-diagram of the branch's inner graph: nodes in declared
+ *  order (vertical), input ports on the left, provided ports on the right,
+ *  data wires solid, control wires dashed. Deliberately NOT interactive —
+ *  branches run on isolated blackboards, so an editable mini-canvas would
+ *  mislead (the contract: app/components/primitives/parallel.py). */
+function BranchMiniGraph({
+  branch,
+  meta,
+}: {
+  branch: BranchSpec;
+  meta: Map<string, PrimitiveMeta>;
+}) {
+  const g = branch.graph;
+  const ids = Object.keys(g.nodes);
+  const H = 44;
+  const GAP = 88;
+  const PAD = 10;
+  const W = 250;
+  const HEIGHT = PAD * 2 + Math.max(1, ids.length) * GAP - (GAP - H);
+  const y = (i: number) => PAD + i * GAP;
+  const X1 = 30; // node box left
+  const X2 = 178; // node box right
+  if (ids.length === 0)
+    return (
+      <div className={styles.branchMini}>
+        <span className={styles.miniEmpty}>no nodes yet — add one below</span>
+      </div>
+    );
+  return (
+    <div className={styles.branchMini}>
+      <svg width={W} height={HEIGHT} aria-label={`branch ${branch.name} diagram`}>
+        {g.edges.map((e, i) => {
+          const fi = ids.indexOf(e.from);
+          const ti = ids.indexOf(e.to);
+          if (fi < 0 || ti < 0) return null;
+          const x1 = X2;
+          const y1 = y(fi) + H / 2;
+          const x2v = X1;
+          const y2 = y(ti) + H / 2;
+          const bend = Math.max(28, Math.abs(y2 - y1) * 0.35);
+          const d = `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2v - bend} ${y2}, ${x2v} ${y2}`;
+          return (
+            <path
+              key={i}
+              d={d}
+              className={e.type === "control" ? styles.edgeControl : styles.edgeData}
+            />
+          );
+        })}
+        {ids.map((id, i) => {
+          const spec = g.nodes[id];
+          const m = meta.get(spec.primitive);
+          const inPorts = m ? m.accepts.filter((t) => t !== "goal") : [];
+          const outPorts = m ? m.provides : [];
+          return (
+            <g key={id}>
+              <rect x={X1} y={y(i)} width={X2 - X1} height={H} rx={8} className={styles.branchNodeBox} />
+              <text x={X1 + 8} y={y(i) + 18} className={styles.branchNodePri}>
+                {spec.primitive}
+              </text>
+              <text x={X1 + 8} y={y(i) + 33} className={styles.branchNodeId}>
+                {id}
+              </text>
+              {inPorts.slice(0, 3).map((t, j) => (
+                <text
+                  key={t + String(j)}
+                  x={X1 - 6}
+                  y={y(i) + H / 2 + (j - (Math.min(3, inPorts.length) - 1) / 2) * 10 + 3}
+                  textAnchor="end"
+                  className={styles.branchPort}
+                >
+                  {t}
+                </text>
+              ))}
+              {outPorts.slice(0, 3).map((t, j) => (
+                <text
+                  key={t + String(j)}
+                  x={X2 + 6}
+                  y={y(i) + H / 2 + (j - (Math.min(3, outPorts.length) - 1) / 2) * 10 + 3}
+                  className={styles.branchPort}
+                >
+                  {t}
+                </text>
+              ))}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+/** Structured inner-node row: primitive (nested `parallel` is excluded —
+ *  flat branches in the structured editor; raw JSON is the full-power
+ *  path), budget, config JSON. */
+function InnerNodeRow({
+  id,
+  spec,
+  meta,
+  onChange,
+  onRemove,
+}: {
+  id: string;
+  spec: BranchNodeSpec;
+  meta: Map<string, PrimitiveMeta>;
+  onChange: (patch: Partial<BranchNodeSpec>) => void;
+  onRemove: () => void;
+}) {
+  const [cfgText, setCfgText] = useState(() =>
+    JSON.stringify(spec.config ?? {})
+  );
+  const [cfgBad, setCfgBad] = useState(false);
+  const setConfig = (text: string) => {
+    setCfgText(text);
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        setCfgBad(false);
+        onChange(
+          Object.keys(parsed).length > 0 ? { config: parsed } : { config: {} }
+        );
+      } else {
+        setCfgBad(true);
+      }
+    } catch {
+      setCfgBad(true);
+    }
+  };
+  return (
+    <div className={styles.nodeRow}>
+      <div className={styles.nodeRowHead}>
+        <span className={styles.nid}>{id}</span>
+        <select
+          value={spec.primitive}
+          aria-label={`node ${id} primitive`}
+          onChange={(e) => onChange({ primitive: e.target.value })}
+        >
+          {[...meta.keys()]
+            .filter((p) => p !== "parallel")
+            .map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+        </select>
+        <label className={styles.budget}>
+          budget
+          <input
+            type="number"
+            min={0}
+            aria-label={`node ${id} budget`}
+            value={spec.budget ?? ""}
+            placeholder="∞"
+            onChange={(e) =>
+              onChange({ budget: e.target.value === "" ? null : Number(e.target.value) })
+            }
+          />
+        </label>
+        <span className={styles.spacer} />
+        <button type="button" className={styles.xBtn} title={`remove node ${id}`} onClick={onRemove}>
+          ✕
+        </button>
+      </div>
+      <div className={styles.cfgRow}>
+        <textarea
+          rows={2}
+          spellCheck={false}
+          aria-label={`node ${id} config JSON`}
+          className={cfgBad ? styles.cfgBad : undefined}
+          value={cfgText}
+          onChange={(e) => setConfig(e.target.value)}
+        />
+        {cfgBad && <span className={styles.err}>valid JSON object required</span>}
+      </div>
+    </div>
+  );
+}
+
+/** Structured inner-edge row: from / to / type (+ max_passes for control).
+ *  When type is control, the FROM options are pre-filtered to verdict
+ *  nodes (critic/gate) since those are the only legal sources. */
+function InnerEdgeRow({
+  edge,
+  ids,
+  controlSources,
+  onChange,
+  onRemove,
+}: {
+  edge: EdgeSpec;
+  ids: string[];
+  controlSources: string[];
+  onChange: (patch: Partial<EdgeSpec>) => void;
+  onRemove: () => void;
+}) {
+  const fromOptions =
+    edge.type === "control" && controlSources.length > 0 ? controlSources : ids;
+  const from =
+    edge.from && fromOptions.includes(edge.from) ? edge.from : fromOptions[0];
+  return (
+    <div className={styles.edgeRow}>
+      <select
+        value={from}
+        aria-label="edge from"
+        onChange={(e) => onChange({ from: e.target.value })}
+      >
+        {fromOptions.map((id) => (
+          <option key={id} value={id}>
+            {id}
+          </option>
+        ))}
+      </select>
+      <span className={styles.arrow}>→</span>
+      <select value={edge.to} aria-label="edge to" onChange={(e) => onChange({ to: e.target.value })}>
+        {ids.map((id) => (
+          <option key={id} value={id}>
+            {id}
+          </option>
+        ))}
+      </select>
+      <select
+        value={edge.type}
+        aria-label="edge type"
+        onChange={(e) =>
+          onChange({
+            type: e.target.value as "data" | "control",
+            ...(e.target.value === "control" && edge.max_passes == null
+              ? { max_passes: 2 }
+              : null),
+          })
+        }
+      >
+        <option value="data">data</option>
+        <option value="control">control</option>
+      </select>
+      {edge.type === "control" && (
+        <label className={styles.budget}>
+          max
+          <input
+            type="number"
+            min={1}
+            aria-label="edge max_passes"
+            value={edge.max_passes ?? ""}
+            onChange={(e) =>
+              onChange({ max_passes: e.target.value === "" ? undefined : Number(e.target.value) })
+            }
+          />
+        </label>
+      )}
+      <span className={styles.spacer} />
+      <button type="button" className={styles.xBtn} title="remove edge" onClick={onRemove}>
+        ✕
+      </button>
+    </div>
+  );
+}
+
+function AddNodeRow({
+  meta,
+  onAdd,
+}: {
+  meta: Map<string, PrimitiveMeta>;
+  onAdd: (primitive: string) => void;
+}) {
+  const choices = [...meta.keys()].filter((p) => p !== "parallel");
+  const [pick, setPick] = useState(choices[0] ?? "");
+  return (
+    <div className={styles.addRow}>
+      <select value={pick} aria-label="new node primitive" onChange={(e) => setPick(e.target.value)}>
+        {choices.map((p) => (
+          <option key={p} value={p}>
+            {p}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        className={styles.addBtn}
+        disabled={!pick}
+        onClick={() => pick && onAdd(pick)}
+      >
+        + add node
+      </button>
+      <span className={styles.hint}>
+        nested <code>parallel</code> goes in raw JSON
+      </span>
+    </div>
+  );
+}
+
+function AddEdgeRow({
+  ids,
+  controlSources,
+  onAdd,
+}: {
+  ids: string[];
+  controlSources: string[];
+  onAdd: (e: EdgeSpec) => void;
+}) {
+  const [type, setType] = useState<"data" | "control">("data");
+  const [from, setFrom] = useState(ids[0] ?? "");
+  const [to, setTo] = useState(ids[1] ?? "");
+  if (ids.length < 2)
+    return (
+      <div className={styles.addRow}>
+        <button type="button" className={styles.addBtn} disabled>
+          + add edge (needs two nodes)
+        </button>
+      </div>
+    );
+  const srcOptions = type === "control" && controlSources.length > 0 ? controlSources : ids;
+  const src = srcOptions.includes(from) ? from : srcOptions[0];
+  const dst = ids.includes(to) ? to : ids.find((id) => id !== src) ?? ids[0];
+  return (
+    <div className={styles.addRow}>
+      <select
+        value={src}
+        aria-label="new edge from"
+        onChange={(e) => setFrom(e.target.value)}
+      >
+        {srcOptions.map((id) => (
+          <option key={id} value={id}>
+            {id}
+          </option>
+        ))}
+      </select>
+      <span className={styles.arrow}>→</span>
+      <select value={dst} aria-label="new edge to" onChange={(e) => setTo(e.target.value)}>
+        {ids.map((id) => (
+          <option key={id} value={id}>
+            {id}
+          </option>
+        ))}
+      </select>
+      <select
+        aria-label="new edge type"
+        value={type}
+        onChange={(e) => setType(e.target.value as "data" | "control")}
+      >
+        <option value="data">data</option>
+        <option value="control">control</option>
+      </select>
+      <button
+        type="button"
+        className={styles.addBtn}
+        disabled={src === dst}
+        onClick={() => {
+          const edge: EdgeSpec = { from: src, to: dst, type };
+          if (type === "control") edge.max_passes = 2;
+          onAdd(edge);
+        }}
+      >
+        + add edge
+      </button>
+    </div>
+  );
+}
+
+/** The original raw-JSON branch editor, kept as the escape-hatch mode of
+ *  the branch manager (nested `parallel`, any shape the validator
+ *  accepts — the backend remains the authority). */
+function RawBranchEditor({
+  branches,
+  onBranches,
+}: {
+  branches: BranchSpec[];
+  onBranches: (b: BranchSpec[]) => void;
+}) {
   const [text, setText] = useState(() => JSON.stringify(branches, null, 2));
   const [err, setErr] = useState<string | null>(null);
 
@@ -479,12 +1063,7 @@ function BranchEditor({
   };
 
   return (
-    <div className={styles.branchbox}>
-      <h3>Inline branches (JSON)</h3>
-      <p className={styles.hint}>
-        Each branch is a mini-graph run on a fresh blackboard;{" "}
-        <code>act</code> is rejected inside branches.
-      </p>
+    <>
       <textarea
         rows={7}
         spellCheck={false}
@@ -496,6 +1075,6 @@ function BranchEditor({
       <button type="button" className={styles.apply} onClick={apply}>
         Apply branches
       </button>
-    </div>
+    </>
   );
 }
