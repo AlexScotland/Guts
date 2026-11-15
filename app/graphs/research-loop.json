@@ -1,0 +1,23 @@
+{
+  "name": "research-loop — research, judge, re-research",
+  "description": "The retry loop aimed at the RESEARCH step (contrast sample-critique.json, which loops back to 'act'): 'research' gathers, 'critic' judges, and a CONTROL edge bounces back to 'research' when the verdict fails. 'Keep everything useful' is the loop's built-in semantics, not an extra node: the blackboard is append-only and resolves inputs most-recent-first (graph_loop.py OutputLog), and 'research' re-injects the prior pass's context into the next task (research.py 'Prior context'). So pass N extends pass N-1 instead of restarting it. Data edges stay acyclic; the only cycle is the declared control edge, which must carry max_passes, so the loop terminates by construction. max_passes 3 => at most 3 re-research bounces after the initial run (4 research executions total).",
+  "version": "1.0",
+  "budget": 240,
+  "nodes": {
+    "dig": {
+      "primitive": "research",
+      "config": {
+        "task": "Read-only research: gather authoritative, up-to-date context that answers the goal. On later passes you will be given 'Prior context' above the goal — build on it: close the specific gaps the critic flagged, verify weak or unverified claims, and add new sources. Do NOT re-derive what the prior context already covers, and do NOT modify any files, memory, or anything outside this task."
+      },
+      "budget": 40
+    },
+    "judge": {
+      "primitive": "critic",
+      "config": {}
+    }
+  },
+  "edges": [
+    { "from": "dig", "to": "judge", "type": "data" },
+    { "from": "judge", "to": "dig", "type": "control", "max_passes": 3 }
+  ]
+}
