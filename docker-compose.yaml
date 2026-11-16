@@ -16,6 +16,27 @@
       extra_hosts:
       - "host.docker.internal:host-gateway"
 
+    design-mcp:
+      # Face 1: the GUTS design face (design/draft + catalog) as an MCP
+      # server — hand-rolled JSON-RPC 2.0, no SDK (app/mcp is this repo's
+      # own client package with that name; the official SDK would shadow
+      # it). Reuses the app image; serves the http transport on 8090 so
+      # remote clients reach it. draft() reaches the host's Ollama via
+      # host-gateway, same as `app`.
+      # Tailscale mapping (from Alex's notes):
+      #   ts map add --https aifactory.tailnet.ca:8090 design-mcp:8090
+      build:
+        context: ./app/
+        dockerfile: Dockerfile
+      command: python -m design.mcp_server --http 8090
+      volumes:
+        - "./app/:/app/"
+      ports:
+        - "8090:8090"
+      container_name: design-mcp
+      extra_hosts:
+      - "host.docker.internal:host-gateway"
+
     frontend:
       build:
         context: ./chat-ui/

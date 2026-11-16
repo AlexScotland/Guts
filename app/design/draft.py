@@ -194,9 +194,10 @@ def _invoke_and_parse(completer: Completer, goal: str, notes: str | None, curren
     return doc
 
 
-def _verdict(doc: dict) -> dict:
-    """The ONLY green door: backend validate_graph. A red verdict is a
-    normal outcome — the doc is still returned, verbatim, for the caller."""
+def verdict(doc: dict) -> dict:
+    """The verdict for a document — public so the MCP/chat faces can
+    validate a caller-supplied doc. The ONLY green door: backend
+    validate_graph. A red verdict is a normal outcome, not an error."""
     try:
         validate_graph(doc)
     except GraphError as exc:
@@ -225,4 +226,4 @@ def draft(goal: str, notes: str | None = None, current: dict | None = None,
 
     engine = completer if completer is not None else get_completer()
     doc = _invoke_and_parse(engine, str(goal), notes, current)
-    return DraftResult(doc=doc, verdict=_verdict(doc))
+    return DraftResult(doc=doc, verdict=verdict(doc))
