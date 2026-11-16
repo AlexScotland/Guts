@@ -1040,13 +1040,16 @@ export default function Page() {
         </div>
       </div>
 
-      {designOpen && (
-        <DesignPanel
-          current={toDoc(graph)}
-          onLoad={onLoadDraftDoc}
-          onClose={() => setDesignOpen(false)}
-        />
-      )}
+      {/* ALWAYS mounted: closing hides it (the panel renders null while
+          closed) instead of unmounting it — unmounting would kill the panel's
+          local state (ask, notes, checkbox, last draft, local history), so
+          closing and reopening would lose everything the author had. */}
+      <DesignPanel
+        open={designOpen}
+        current={toDoc(graph)}
+        onLoad={onLoadDraftDoc}
+        onClose={() => setDesignOpen(false)}
+      />
 
       {toast && (
         <div className={`${styles.toast} ${toast.ok ? styles.toastOk : styles.toastErr}`} role="status">

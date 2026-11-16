@@ -6,6 +6,11 @@ import { designDraft, type DesignDraftResult } from "../lib/api";
 import type { EdgeSpec, GraphDoc, NodeSpec } from "../lib/types";
 
 interface Props {
+  /** While false the panel renders nothing but STAYS MOUNTED — closing is a
+   *  hide, not a tear-down: the author's ask, notes, checkbox, last draft,
+   *  and local history must survive a close/reopen (unmounting would kill
+   *  them — the panel lives in the page, hidden, not conditionally created). */
+  open: boolean;
   /** The working canvas as a document — offered as the draft's `current`
    *  context (face 0 contract: stateless core, caller owns the context). */
   current: GraphDoc;
@@ -44,7 +49,7 @@ function docEdges(doc: DocLike): EdgeSpec[] {
  *  verdict rides with it, and a one-click load puts the draft ON the
  *  canvas in front of the author. The designer is just a client here:
  *  all design intelligence lives in app/design/. */
-export default function DesignPanel({ current, onLoad, onClose }: Props) {
+export default function DesignPanel({ open, current, onLoad, onClose }: Props) {
   const [ask, setAsk] = useState(
     "I want a graph that does research, then does a fact check, drops irrelevant knowledge and loops until a decision that the original ask is completed"
   );
@@ -54,6 +59,11 @@ export default function DesignPanel({ current, onLoad, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [turn, setTurn] = useState<DesignDraftResult | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+
+  // Closed = hidden, NOT unmounted: the hooks above have already run, so
+  // every field (ask / notes / useCurrent / phase / turn / history) survives
+  // the hide and is exactly as the author left it when the door reopens.
+  if (!open) return null;
 
   const generate = async () => {
     if (!ask.trim()) return;
