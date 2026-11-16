@@ -168,13 +168,4 @@ export interface AgentDetail {
   agent: AgentDocument;
 }
 
-export class ApiError extends Error {
-  kind: "network" | "http" | "parse";
-  status?: number;
-  constructor(kind: "network" | "http" | "parse", message: string, status?: number) {
-    super(message);
-    this.name = "ApiError";
-    this.kind = kind;
-    this.status = status;
-  }
-}
+

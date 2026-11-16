@@ -297,6 +297,39 @@ def test_canned_env_rejects_non_object_docs(monkeypatch):
         mcp_server._maybe_install_canned()
 
 
+def test_http_face_allows_cross_origin_mcp(monkeypatch):
+    """CORS mirrors app/server.py — a browser dialling the face by absolute
+    URL (Pages export, another origin) must be able to POST /mcp directly."""
+    fake(monkeypatch)
+    from fastapi.testclient import TestClient
+
+    client = TestClient(mcp_server.build_app())
+
+    r = client.post(
+        "/mcp",
+        json=_request("tools/list", None, 1),
+        headers={
+            "Origin": "https://designer.example",
+            "Content-Type": "application/json",
+        },
+    )
+    assert r.status_code == 200
+    # allow_origins=["*"] + allow_credentials: starlette answers with
+    # "*" (no cookie) or echoes the origin — either is cross-origin-OK.
+    assert r.headers.get("access-control-allow-origin") is not None
+
+    pre = client.options(
+        "/mcp",
+        headers={
+            "Origin": "https://designer.example",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert pre.status_code == 200
+    assert "POST" in pre.headers.get("access-control-allow-methods", "")
+
+
 @pytest.fixture(autouse=True)
 def _reset_completer():
     yield

@@ -12,20 +12,41 @@
  *   GET    /health                     — liveness probe
  */
 
-import {
-  ApiError,
-  type AgentDetail,
-  type AgentDocument,
-  type AgentsStatus,
-  type ComponentsStatus,
-  type GraphDoc,
-  type GraphsStatus,
-  type LastRun,
+// `import type` (erased by Node's type stripping) — api.ts must not resolve
+// ./types at runtime under the .mjs test runner (extensionless specifiers
+// don't resolve there).
+import type {
+  AgentDetail,
+  AgentDocument,
+  AgentsStatus,
+  ComponentsStatus,
+  GraphDoc,
+  GraphsStatus,
+  LastRun,
 } from "./types";
 
-/** Re-exported: client code that catches backend errors (e.g. the live-run
- *  poller, which must ignore 404s) imports it from one door — this module. */
-export { ApiError };
+/** Backend/client error, tagged by failure world so the UI can phrase it:
+ *  "network" = the request never landed (service down, DNS, CORS);
+ *  "http" = it landed and the other side refused (status / JSON-RPC error);
+ *  "parse" = an answer landed but was not the shape we contract for.
+ *
+ * Defined HERE (not in types.ts) on purpose: this is the one module with a
+ * RUNTIME import of it, and Node's type-stripping test runner only resolves
+ * explicit-extension specifiers — keeping the runtime surface inside this
+ * file is what lets the pure type file stay import-erased.
+ *
+ * Re-exported for convenience: client code that catches backend errors
+ * (e.g. the live-run poller, which must ignore 404s) imports it from here. */
+export class ApiError extends Error {
+  kind: "network" | "http" | "parse";
+  status?: number;
+  constructor(kind: "network" | "http" | "parse", message: string, status?: number) {
+    super(message);
+    this.name = "ApiError";
+    this.kind = kind;
+    this.status = status;
+  }
+}
 
 /** Backend base URL.
  *
@@ -354,4 +375,157 @@ export async function isBackendOnline(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/* ── Design face (face 1 — the GUTS MCP server, app/design/mcp_server.py) ──
+ *
+ * The designer talks to the design face AS AN MCP CLIENT: one JSON-RPC
+ * `tools/call` to the `draft` tool per generation. In the default
+ * same-origin setup the request lands on this Next server and rewrites()
+ * forwards it to the design face (DESIGN_MCP_PROXY_TARGET —
+ * `http://design-mcp:8090` in compose, `http://localhost:8090` for local
+ * dev), so NO "localhost" is baked into the client. Cross-origin setups
+ * (Pages export / legacy absolute API_URL) can set NEXT_PUBLIC_MCP_URL to
+ * the design face's absolute URL instead.
+ *
+ * Response semantics (pinned by app/design/mcp_server.py + the repo's own
+ * client, app/mcp/client.py): a RED verdict is a normal business result
+ * (doc + verdict.ok:false — the face never fails on a bad doc); isError /
+ * a JSON-RPC error means the tool or the transport failed (e.g. the model
+ * is unreachable), which surfaces as an ApiError here.
+ */
+
+/** The `draft` tool's result: the candidate document + the green door's
+ *  verdict. `doc` is a graph document (schemas/graph.py) — the canvas
+ *  bridge is fromDoc()/toDoc() in lib/graph.ts. */
+export interface DesignDraftResult {
+  doc: Record<string, unknown>;
+  verdict: { ok: boolean; issues: string[] };
+}
+
+const MCP_URL = process.env.NEXT_PUBLIC_MCP_URL || `${API_URL}/mcp`;
+
+let mcpSeq = 0;
+
+/** First {type:"text",text} entry of an MCP content array (the face
+ *  always answers with exactly one text part — mcp_server.py). */
+function firstContentText(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  for (const part of content) {
+    if (
+      part &&
+      typeof part === "object" &&
+      (part as { type?: unknown }).type === "text" &&
+      typeof (part as { text?: unknown }).text === "string"
+    ) {
+      return (part as { text: string }).text;
+    }
+  }
+  return "";
+}
+
+/** Parse a design-face JSON-RPC response into the draft result.
+ *
+ *  Exported so this repo's tests can pin the contract without a network:
+ *  good result / visible tool error (isError) / JSON-RPC error / shape
+ *  violations. Throws ApiError in every failure world. */
+export function parseDesignResult(
+  body: unknown,
+  status: number
+): DesignDraftResult {
+  const msg = (body ?? {}) as {
+    error?: { code?: number; message?: string };
+    result?: { content?: unknown; isError?: boolean };
+  };
+  if (msg.error) {
+    throw new ApiError(
+      "http",
+      `Design face ${msg.error.code ?? "error"}: ${msg.error.message ?? "unknown error"}`,
+      status
+    );
+  }
+  if (!msg.result) {
+    throw new ApiError(
+      "parse",
+      `Design face returned neither a result nor an error (HTTP ${status})`
+    );
+  }
+  const text = firstContentText(msg.result.content);
+  if (msg.result.isError) {
+    throw new ApiError("http", text || "Design tool failed", status);
+  }
+  let payload: unknown;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    throw new ApiError(
+      "parse",
+      `Design tool answered with non-JSON text (HTTP ${status}): ${text.slice(0, 200)}`
+    );
+  }
+  const p = (payload ?? {}) as { doc?: unknown; verdict?: unknown };
+  if (typeof p.doc !== "object" || p.doc === null || Array.isArray(p.doc)) {
+    throw new ApiError("parse", "Design tool result had no `doc` object");
+  }
+  const v = (p.verdict ?? {}) as Record<string, unknown>;
+  if (typeof v.ok !== "boolean") {
+    throw new ApiError("parse", "Design tool result had no `verdict`");
+  }
+  return {
+    doc: p.doc as Record<string, unknown>,
+    verdict: {
+      ok: v.ok,
+      issues: Array.isArray(v.issues) ? v.issues.map(String) : [],
+    },
+  };
+}
+
+/** Draft a graph through the design face (MCP `draft` tool).
+ *
+ *  `notes`  — the business-case channel (face 0 contract: loop counts,
+ *             stop conditions, priorities all ride here, never in the core).
+ *  `current` — the working canvas as a document; when passed, the model may
+ *             ground the draft in what is already on the canvas. The core
+ *             stays stateless either way. */
+export async function designDraft(
+  goal: string,
+  notes?: string,
+  current?: Record<string, unknown>
+): Promise<DesignDraftResult> {
+  const args: Record<string, unknown> = { goal };
+  if (notes && notes.trim()) args.notes = notes.trim();
+  if (current) args.current = current;
+  let res: Response;
+  try {
+    mcpSeq += 1;
+    res = await fetch(MCP_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: mcpSeq,
+        method: "tools/call",
+        params: { name: "draft", arguments: args },
+      }),
+    });
+  } catch (err) {
+    guardNetwork(
+      err,
+      "Could not reach the design face. Is it running (design-mcp / python -m design.mcp_server --http)?"
+    );
+  }
+  const text = await res.text();
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new ApiError(
+      "parse",
+      `Design face returned a non-JSON response (HTTP ${res.status}): ${text.slice(0, 200)}`
+    );
+  }
+  if (!res.ok && !(body as { error?: unknown }).error) {
+    throw new ApiError("http", `Design face HTTP ${res.status}`, res.status);
+  }
+  return parseDesignResult(body, res.status);
 }

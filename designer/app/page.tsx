@@ -9,6 +9,7 @@ import GraphLibrary from "./components/GraphLibrary";
 import Palette from "./components/Palette";
 import Inspector from "./components/Inspector";
 import TestPanel from "./components/TestPanel";
+import DesignPanel from "./components/DesignPanel";
 import { useTheme } from "./hooks/useTheme";
 import {
   activate,
@@ -60,6 +61,7 @@ import {
 import type {
   AgentMeta,
   BranchSpec,
+  GraphDoc,
   GraphMeta,
   LastRun,
   PrimitiveInfo,
@@ -148,6 +150,13 @@ export default function Page() {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  // Face 2 (the DESIGN door): the toolbar button opens the AI design panel
+  // (a slide-over window). The panel is a pure CLIENT of the GUTS MCP
+  // design face (app/design/mcp_server.py) — it drafts, shows the verdict,
+  // and hands the document back here through onLoad, which puts it on the
+  // canvas in front of the author. Nothing design-smart in this file.
+  const [designOpen, setDesignOpen] = useState(false);
 
   // Live run view (the canvas seam): armed while a run is in flight; the
   // poller keeps runRecord fresh (status "running" + events so far) so the
@@ -806,6 +815,35 @@ export default function Page() {
     }
   }, [dirty, doSave, graph.id, notify, refreshDoors]);
 
+  /** Face 2 load path: the design face drafted a graph — put it ON the
+   *  canvas under a fresh id (same pattern as newGraph: the doc becomes the
+   *  working graph, clean baseline, nothing saved until the author hits
+   *  Save). Confirm first when the current canvas has unsaved work. */
+  const onLoadDraftDoc = useCallback(
+    (doc: Record<string, unknown>) => {
+      if (dirty && !window.confirm(`Replace the unsaved canvas "${graph.id}" with the drafted graph?`)) {
+        return;
+      }
+      try {
+        // parseDesignResult already pinned the {doc object + verdict} shape;
+        // the document is a graph document (backend schemas/graph.py).
+        const g = fromDoc(
+          `ai-${new Date().toISOString().slice(11, 19).replace(/:/g, "")}`,
+          doc as unknown as GraphDoc
+        );
+        setGraph(g);
+        setBaseline(JSON.stringify(toDoc(g)));
+        setSelection(null);
+        resetRunView(); // don't leak the previous graph's run states
+        setDesignOpen(false);
+        notify(true, `Drafted graph is on the canvas as ${g.id} — Save when it looks right.`);
+      } catch (e) {
+        notify(false, `Could not put the draft on the canvas: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    [dirty, graph.id, notify, resetRunView]
+  );
+
   const onDuplicate = useCallback(async () => {
     try {
       const stamp = new Date().toISOString().slice(5, 10).replace("-", "") +
@@ -939,6 +977,7 @@ export default function Page() {
             onActivate={onActivate}
             onDuplicate={onDuplicate}
             onDelete={onDelete}
+            onOpenDesign={() => setDesignOpen(true)}
           />
           <Canvas
             graph={graph}
@@ -1000,6 +1039,14 @@ export default function Page() {
           />
         </div>
       </div>
+
+      {designOpen && (
+        <DesignPanel
+          current={toDoc(graph)}
+          onLoad={onLoadDraftDoc}
+          onClose={() => setDesignOpen(false)}
+        />
+      )}
 
       {toast && (
         <div className={`${styles.toast} ${toast.ok ? styles.toastOk : styles.toastErr}`} role="status">

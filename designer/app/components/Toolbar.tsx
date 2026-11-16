@@ -12,6 +12,9 @@ interface Props {
   onActivate: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  /** Face 2: open the AI design panel (the GUTS MCP design face drafts a
+   *  graph from your ask; load it onto the canvas from there). */
+  onOpenDesign: () => void;
 }
 
 /** The working-graph control strip: identity, save, activate, lifecycle. */
@@ -25,6 +28,7 @@ export default function Toolbar({
   onActivate,
   onDuplicate,
   onDelete,
+  onOpenDesign,
 }: Props) {
   return (
     <div className={styles.toolbar}>
@@ -44,6 +48,14 @@ export default function Toolbar({
       </div>
 
       <div className={styles.right}>
+        <button
+          type="button"
+          className={`${styles.btn} ${styles.design}`}
+          onClick={onOpenDesign}
+          title="Ask the AI design face to draft a graph from your ask (GUTS MCP design face) — load the result onto the canvas"
+        >
+          ✦ Design
+        </button>
         <button
           type="button"
           className={styles.btn}

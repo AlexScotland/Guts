@@ -74,6 +74,9 @@
         # it must resolve FROM THIS container: compose service name `app`,
         # not localhost.
         - BACKEND_PROXY_TARGET=http://app:8000
+        # The design face (face 1, `design-mcp` service): the DESIGN panel
+        # proxies its MCP endpoint the same way (see next.config.js).
+        - DESIGN_MCP_PROXY_TARGET=http://design-mcp:8090
         # Bind all interfaces so the dev server is reachable through the
         # host port mapping.
         - HOSTNAME=0.0.0.0

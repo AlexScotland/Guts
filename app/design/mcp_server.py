@@ -56,6 +56,7 @@ import sys
 from typing import Any, Callable
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from . import catalog as design_catalog
@@ -352,6 +353,17 @@ def build_app():
     """
     _maybe_install_canned()
     app = FastAPI(title="guts-design MCP (Face 1)")
+
+    # CORS mirrors app/server.py: cross-origin setups (Pages export, a page
+    # served from another origin dialling this service by absolute URL) must
+    # be able to POST /mcp directly. Same-origin proxy setups never see it.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     async def _handle(request: Request):
         try:

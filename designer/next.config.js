@@ -96,9 +96,16 @@ const nextConfig = {
     // emits proxy rules that can't work in a static context.
     if (PAGES_EXPORT) return [];
     const base = process.env.BACKEND_PROXY_TARGET || 'http://localhost:8000';
+    // face 1: the GUTS DESIGN FACE (app/design/mcp_server.py, --http). The
+    // DESIGN panel in the designer talks to it as an MCP client (POST /mcp,
+    // JSON-RPC tools/call "draft"). In compose it is the `design-mcp`
+    // service:8090; for `next dev` on the box, localhost:8090.
+    const mcp =
+      process.env.DESIGN_MCP_PROXY_TARGET || 'http://localhost:8090';
     const rules = [
       { source: '/api/:path*', destination: `${base}/api/:path*` },
       { source: '/health', destination: `${base}/health` },
+      { source: '/mcp', destination: `${mcp}/mcp` },
     ];
     if (SUBPATH) {
       // Direct-access shims: the UI (app/lib/api.ts) and any in-network
@@ -111,6 +118,7 @@ const nextConfig = {
       rules.push(
         { source: `${SUBPATH}/api/:path*`, destination: `${base}/api/:path*` },
         { source: `${SUBPATH}/health`, destination: `${base}/health` },
+        { source: `${SUBPATH}/mcp`, destination: `${mcp}/mcp` },
       );
     }
     return rules;
